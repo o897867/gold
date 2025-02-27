@@ -113,7 +113,7 @@ class Feed:
         )
     def reconnect(self):
         """ 尝试自动重连 """
-        max_retries = 5  # 最大重试次数
+        max_retries = 100  # 最大重试次数
         if self.reconnect_attempts >= max_retries:
             print("❌ 达到最大重连次数，停止重连")
             return
@@ -137,6 +137,7 @@ class Feed:
     def on_open(self, ws):
         """ WebSocket 连接成功 """
         print('✅ WebSocket 连接成功！')
+        self.reconnect_attempts = 0
         sub_param = {
             "cmd_id": 22002,
             "seq_id": 123,
@@ -179,7 +180,7 @@ class Feed:
             on_error=self.on_error,
             on_close=self.on_close,
         )
-        self.ws.run_forever()
+        self.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
 
 
 
@@ -239,4 +240,4 @@ if __name__ == '__main__':
     def run_ws():
         feed.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
     threading.Thread(target=run_ws).start()
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000,threaded=True)
