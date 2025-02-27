@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>实时 DOM 订单簿</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    table {
+      margin: 0 auto;
+      border-collapse: collapse;
+      width: 60%;
+    }
+    th, td {
+      padding: 8px;
+      text-align: center;
+      border: 1px solid #ddd;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    .bid { background-color: rgba(0, 128, 255, 0.3); } /* 买单颜色（浅蓝色） */
+    .ask { background-color: rgba(255, 99, 71, 0.3); } /* 卖单颜色（浅红色） */
+    .best-bid { background-color: rgba(0, 128, 255, 0.8); font-weight: bold; } /* 最佳买单（深蓝） */
+    .best-ask { background-color: rgba(255, 99, 71, 0.8); font-weight: bold; } /* 最佳卖单（深红） */
+  </style>
+</head>
+<body>
+  <h1>实时 DOM 订单簿</h1>
+  <div id="orderbook-div"></div>
+
+  <script>
+    // 1. 建立 SSE 连接
+    const evtSource = new EventSource("/sse");
+
+    evtSource.onmessage = function(event) {
+      // 2. 解析 JSON 数据
+      const data = JSON.parse(event.data);
+      const bids = data.bids; // [[price, volume], ...]
+      const asks = data.asks; // [[price, volume], ...]
+
+      // 3. 获取当前最小 / 最大价格
+      const minPrice = Math.min(...bids.map(d => d[0]), ...asks.map(d => d[0]));
+      const maxPrice = Math.max(...bids.map(d => d[0]), ...asks.map(d => d[0]));
+
+      // 4. 价格扩展（上下各加 10 档）
+      const offset = 0.01;  // 扩展范围（上下各 10 个 0.01 档）
+      const step = 0.01;    // 每个价格间隔
+      let extendedPrices = [];
+
+      for (let p = maxPrice + offset; p >= minPrice - offset; p -= step) {
+        extendedPrices.push(parseFloat(p.toFixed(2)));  // 处理浮点精度
+      }
+
+      // 5. 找到最佳买价 / 卖价
+      const bestBidPrice = bids.length > 0 ? Math.max(...bids.map(d => d[0])) : null;
+      const bestAskPrice = asks.length > 0 ? Math.min(...asks.map(d => d[0])) : null;
+
+      // 6. 生成 HTML 表格
+      let tableHtml = `
+        <table>
+          <tr>
+            <th>买单量 (Bids)</th>
+            <th>价格 (Price)</th>
+            <th>卖单量 (Asks)</th>
+          </tr>
+      `;
+
+      for (let price of extendedPrices) {
+        // 查找该价位的买单量 / 卖单量
+        let bidVolume = "";
+        let askVolume = "";
+        let bidClass = "";
+        let askClass = "";
+
+        const bidItem = bids.find(d => d[0] === price);
+        const askItem = asks.find(d => d[0] === price);
+
+        if (bidItem) {
+          bidVolume = bidItem[1];
+          bidClass = (price === bestBidPrice) ? "best-bid" : "bid";
+        }
+        if (askItem) {
+          askVolume = askItem[1];
+          askClass = (price === bestAskPrice) ? "best-ask" : "ask";
+        }
+
+        // 7. 生成表格行
+        tableHtml += `
+          <tr>
+            <td class="${bidClass}">${bidVolume}</td>
+            <td>${price.toFixed(2)}</td>
+            <td class="${askClass}">${askVolume}</td>
+          </tr>
+        `;
+      }
+
+      tableHtml += "</table>";
+
+      // 8. 更新页面
+      document.getElementById("orderbook-div").innerHTML = tableHtml;
+    };
+
+    // 9. 处理 SSE 连接错误（可选）
+    evtSource.onerror = function(err) {
+      console.error("SSE 连接错误:", err);
+    };
+  </script>
+</body>
+</html>
