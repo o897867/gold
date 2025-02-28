@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>实时Tick数据展示</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>最近100条Tick数据</h1>
+    <table id="tick-table">
+        <thead>
+            <tr>
+                <th>成交价</th>
+                <th>成交量</th>
+                <th>时间</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+    <script>
+        function formatTimestamp(ts) {
+            var date = new Date(parseInt(ts));
+            return date.toLocaleString();
+        }
+
+        function fetchTickData() {
+            fetch(window.location.origin + '/tick_data')
+                .then(response => response.json())
+                .then(data => {
+                    const tbody = document.querySelector('#tick-table tbody');
+                    tbody.innerHTML = ''; // 清空当前内容
+                    data.forEach(tick => {
+                        const d = tick.data || {};
+                        const price = d.price || '';
+                        const volume = d.volume || '';
+                        const timeStr = d.tick_time ? formatTimestamp(d.tick_time) : '';
+                        const row = `<tr>
+                            <td>${price}</td>
+                            <td>${volume}</td>
+                            <td>${timeStr}</td>
+                        </tr>`;
+                        tbody.innerHTML += row;
+                    });
+                    // 更新表格后自动滚动到页面底部
+                    window.scrollTo(0, document.body.scrollHeight);
+                })
+                .catch(err => console.error('Fetch error: ', err));
+        }
+        // 每秒刷新一次数据
+        setInterval(fetchTickData, 1000);
+        fetchTickData();
+    </script>
+</body>
+</html>
