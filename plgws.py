@@ -11,17 +11,8 @@ import numpy as np
 import ssl
 from flask import Flask,send_file,Response,send_from_directory,render_template
 from datetime import datetime
-
-'''
-# Special Note:
-# GitHub: https://github.com/alltick/realtime-forex-crypto-stock-tick-finance-websocket-api
-# Token Application: https://alltick.co
-# Replace "testtoken" in the URL below with your own token
-# API addresses for forex, cryptocurrencies, and precious metals:
-# wss://quote.alltick.io/quote-b-ws-api
-# Stock API address:
-# wss://quote.alltick.io/quote-stock-b-ws-api
-'''
+import os
+import sys
 app = Flask(__name__)
 current_orderbook = {
     "bids": [],
@@ -103,6 +94,7 @@ class Feed:
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 10
 
         self.ws = websocket.WebSocketApp(
             self.url,
@@ -113,11 +105,9 @@ class Feed:
         )
     def reconnect(self):
         """ 尝试自动重连 """
-        max_retries = 100  # 最大重试次数
-        if self.reconnect_attempts >= max_retries:
-            print("❌ 达到最大重连次数，停止重连")
-            return
-        
+        if self.reconnect_attempts >= self.max_reconnect_attempts:
+            print("restart Script")
+            self.restart_script()
         wait_time = 2 ** self.reconnect_attempts  # 指数级退避（2s, 4s, 8s, ...）
         print(f"🔄 尝试在 {wait_time} 秒后重连...")
         time.sleep(wait_time)
@@ -181,8 +171,10 @@ class Feed:
             on_close=self.on_close,
         )
         self.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
-
-
+    def restart_script(self):
+        """ 重启脚本 """
+        python = sys.executable
+        os.execl(python, [python] + sys.argv)
 
 
 # 初始化绘图工具
