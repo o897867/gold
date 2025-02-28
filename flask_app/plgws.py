@@ -11,17 +11,8 @@ import numpy as np
 import ssl
 from flask import Flask,send_file,Response,send_from_directory,render_template
 from datetime import datetime
-
-'''
-# Special Note:
-# GitHub: https://github.com/alltick/realtime-forex-crypto-stock-tick-finance-websocket-api
-# Token Application: https://alltick.co
-# Replace "testtoken" in the URL below with your own token
-# API addresses for forex, cryptocurrencies, and precious metals:
-# wss://quote.alltick.io/quote-b-ws-api
-# Stock API address:
-# wss://quote.alltick.io/quote-stock-b-ws-api
-'''
+import os
+import sys
 app = Flask(__name__)
 current_orderbook = {
     "bids": [],
@@ -102,6 +93,8 @@ class Feed:
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 10
 
         self.ws = websocket.WebSocketApp(
             self.url,
@@ -110,18 +103,31 @@ class Feed:
             on_error=self.on_error,  # 确保这里不会报错
             on_close=self.on_close
         )
+    def reconnect(self):
+        """ 尝试自动重连 """
+        if self.reconnect_attempts >= self.max_reconnect_attempts:
+            print("restart Script")
+            self.restart_script()
+        wait_time = 2 ** self.reconnect_attempts  # 指数级退避（2s, 4s, 8s, ...）
+        print(f"🔄 尝试在 {wait_time} 秒后重连...")
+        time.sleep(wait_time)
+
+        self.reconnect_attempts += 1
+        self.start()  # 重新启动 WebSocket
 
     def on_error(self, ws, error):
         """ 处理 WebSocket 错误 """
         print(f"❌ WebSocket 发生错误: {error}")
+        self.reconnect()  # 自动重连
 
     def on_close(self, ws, close_status_code, close_msg):
         """ WebSocket 关闭时执行 """
         print('❌ WebSocket 连接已关闭！')
-
+        self.reconnect()  # 自动重连
     def on_open(self, ws):
         """ WebSocket 连接成功 """
         print('✅ WebSocket 连接成功！')
+        self.reconnect_attempts = 0
         sub_param = {
             "cmd_id": 22002,
             "seq_id": 123,
@@ -155,8 +161,20 @@ class Feed:
 
         except Exception as e:
             print(f"❌ 解析错误: {e}")
-
-
+    def start(self):
+        """ 启动 WebSocket 连接 """
+        self.ws = websocket.WebSocketApp(
+            self.url,
+            on_open=self.on_open,
+            on_message=self.on_message,
+            on_error=self.on_error,
+            on_close=self.on_close,
+        )
+        self.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
+    def restart_script(self):
+        """ 重启脚本 """
+        python = sys.executable
+        os.execl(python, [python] + sys.argv)
 
 
 # 初始化绘图工具
@@ -214,4 +232,4 @@ if __name__ == '__main__':
     def run_ws():
         feed.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
     threading.Thread(target=run_ws).start()
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000,threaded=True)
