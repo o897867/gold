@@ -279,6 +279,7 @@ class FeedDisplay:
             data = json.loads(message)
             if data.get("cmd_id") == 22998:
                 add_tick_data(data)
+
         except Exception as e:
             print(f"❌ 解析错误: {e}")
         

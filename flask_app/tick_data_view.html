@@ -32,11 +32,12 @@
         </tbody>
     </table>
     <script>
+        // 将 Unix 时间戳转换为本地可读时间字符串
         function formatTimestamp(ts) {
             var date = new Date(parseInt(ts));
             return date.toLocaleString();
         }
-
+        
         function fetchTickData() {
             fetch(window.location.origin + '/tick_data')
                 .then(response => response.json())
@@ -48,15 +49,25 @@
                         const price = d.price || '';
                         const volume = d.volume || '';
                         const timeStr = d.tick_time ? formatTimestamp(d.tick_time) : '';
+                        
+                        // // 转换成交方向：1 显示“卖”，2 显示“买”
+                        // let tradeDirectionStr = '';
+                        // if (d.trade_direction === 1) {
+                        //     tradeDirectionStr = '卖';
+                        // } else if (d.trade_direction === 2) {
+                        //     tradeDirectionStr = '买';
+                        // }
+                        
                         const row = `<tr>
                             <td>${price}</td>
                             <td>${volume}</td>
                             <td>${timeStr}</td>
+
                         </tr>`;
                         tbody.innerHTML += row;
                     });
-                    // 更新表格后自动滚动到页面底部
-                    window.scrollTo(0, document.body.scrollHeight);
+                    // // 更新表格后自动滚动到底部
+                    // window.scrollTo(0, document.body.scrollHeight);
                 })
                 .catch(err => console.error('Fetch error: ', err));
         }
