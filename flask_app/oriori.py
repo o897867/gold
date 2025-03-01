@@ -15,15 +15,7 @@ from datetime import datetime, timedelta
 import os
 from functools import wraps
 import sys
-import klineManager
-import indicator
-import decision
-from flask import request, jsonify
-import datetime
-from decision import strategy_decision
-import pandas as pd
 
-code = 'BTCUSDT'
 app = Flask(__name__)
 current_orderbook = {
     "bids": [],
@@ -61,7 +53,7 @@ class OrderBookPlotter:
     """ 实时绘制 DOM 订单簿 (Depth of Market) """
     
     def __init__(self, depth_display=20):
-        #plt.ion()  # 开启交互模式
+        plt.ion()  # 开启交互模式
         self.depth_display = depth_display  # 设定显示的深度级数
         self.fig, self.ax = plt.subplots(figsize=(6, 8))  # 适配 DOM 风格
         self.bids = []
@@ -118,9 +110,8 @@ class OrderBookPlotter:
                 table[(i + 1, 2)].set_facecolor("lightcoral")
 
         # 保存为图片
-        print('plotted')
         plt.savefig("orderbook.png")
-        #plt.pause(0.1)
+        plt.pause(0.1)
 
 class Feed:
     """ 处理 WebSocket 连接，并实时更新订单簿 """
@@ -173,7 +164,7 @@ class Feed:
             "trace": "3baaa938-f92c-4a74-a228-fd49d5e2f8bc-1678419657806",
             "data": {
                 "symbol_list": [
-                    {"code": code, "depth_level": 10}
+                    {"code": "XAUUSD", "depth_level": 10}
                 ]
             }
         }
@@ -185,7 +176,6 @@ class Feed:
         """ 处理 WebSocket 返回的市场深度数据 """
         try:
             data = json.loads(message)
-            #print(data,'ob')
             if "data" not in data or "bids" not in data["data"] or "asks" not in data["data"]:
                 return
             
@@ -276,7 +266,7 @@ class FeedDisplay:
             "trace": "WS-Tick",
             "data": {
                 "symbol_list": [
-                    {"code": code}
+                    {"code": "XAUUSD"}
                 ]
             }
         }
@@ -288,7 +278,6 @@ class FeedDisplay:
         try:
             data = json.loads(message)
             if data.get("cmd_id") == 22998:
-                #print(data,'tick_data')
                 add_tick_data(data)
 
         except Exception as e:
@@ -326,8 +315,6 @@ class FeedDisplay:
 
 # 初始化绘图工具
 plotter = OrderBookPlotter()
-data_manager = klineManager.KlineDataManager(symbol=code)
-data_manager.fetch_historical_data()
 
 # 初始化 WebSocket 订阅
 feed = Feed(plotter)
@@ -337,19 +324,6 @@ feed2 = FeedDisplay()
 @requires_auth
 def index():
     return render_template('d3_orderbook.html')
-@app.route('/kline')
-def kline():
-    # 返回最新10条K线数据的HTML表格
-    with data_manager.lock:
-        html_table = data_manager.df.tail(10).to_html()
-    return f"<h1>最新K线数据</h1>{html_table}"
-
-@app.route('/data.json')
-def data_json():
-    # 返回最新10条K线数据的JSON格式
-    with data_manager.lock:
-        data_json = data_manager.df.tail(10).to_json(date_format='iso')
-    return data_json
 
 @app.route('/ob.png')
 def get_ob():
@@ -399,34 +373,10 @@ def tick_data():
 @requires_auth
 def tick_data_view():
     return render_template('tick_data_view.html')
-@app.route('/decision')
-def decision():
-    # Get the date parameter from the query string; default to today if not provided.
-    date_str = request.args.get('date')
-    if not date_str:
-        date_str = datetime.datetime.today().strftime('%Y-%m-%d')
-    
-    # Filter the historical DataFrame for the given date.
-    with data_manager.lock:
-        try:
-            # Assuming your DataFrame index is a DatetimeIndex
-            df_day = data_manager.df.loc[date_str]
-            # Convert Series to DataFrame if needed
-            if isinstance(df_day, pd.Series):
-                df_day = df_day.to_frame().T
-        except Exception as e:
-            return f"<h3>No data found for date {date_str}. Error: {e}</h3>"
-    
-    # Call the decision function
-    decision_result = strategy_decision(df_day)
-    
-    # Render the decision page using the template.
-    return render_template("decision.html", decision=decision_result, date=date_str)
+
 if __name__ == '__main__':
     # def run_ws():
     #     feed.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
     # threading.Thread(target=run_ws).start()
     threading.Thread(target=lambda: feed.start()).start()
-    threading.Thread(target=lambda: feed2.start()).start()
-    threading.Thread(target=data_manager.background_update).start()
-    app.run(host='0.0.0.0', port=5000,threaded=True)
+    app.run(host='0.0.0.0', port=8153,threaded=True)

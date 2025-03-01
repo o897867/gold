@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Market Decision for {{ date }}</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    integrity="sha384-ENjdO4Dr2bkBIFxQpeoKJfYbF6GA0cF7F5/1nLYxCP9xU1R8kN9p80cXhW8yL9R+"
+    crossorigin="anonymous">
+</head>
+<body>
+  <div class="container my-4">
+    <h1 class="mb-4">Market Decision for {{ date }}</h1>
+    
+    <!-- Volatility and Market Condition -->
+    <div class="card mb-3">
+      <div class="card-header">
+        Volatility & Market Condition
+      </div>
+      <div class="card-body">
+        <p><strong>Volatility Comment:</strong> {{ decision.volatility_comment }}</p>
+        <p><strong>Market Condition:</strong> {{ decision.market_condition }}</p>
+      </div>
+    </div>
+    
+    <!-- Pivot Points -->
+    <div class="card mb-3">
+      <div class="card-header">
+        Daily Pivot Points
+      </div>
+      <div class="card-body">
+        {% if decision.pivots %}
+          <p><strong>Pivot:</strong> {{ decision.pivots.pivot }}</p>
+          <p><strong>Resistance (R1):</strong> {{ decision.pivots.R1 }}</p>
+          <p><strong>Support (S1):</strong> {{ decision.pivots.S1 }}</p>
+        {% else %}
+          <p>No pivot data available for this day.</p>
+        {% endif %}
+      </div>
+    </div>
+    
+    <!-- Normality Test -->
+    <div class="card mb-3">
+      <div class="card-header">
+        Normality Test
+      </div>
+      <div class="card-body">
+        <p><strong>Normality Comment:</strong> {{ decision.normality_comment }}</p>
+      </div>
+    </div>
+    
+    <!-- Strategy Suggestion -->
+    <div class="card mb-3">
+      <div class="card-header">
+        Strategy Suggestion
+      </div>
+      <div class="card-body">
+        <p><strong>Suggested Strategy:</strong> {{ decision.strategy_suggestion }}</p>
+        <p><strong>Reason:</strong> {{ decision.strategy_reason }}</p>
+      </div>
+    </div>
+    
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" 
+          integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+Yl5/ELG2v6zU5Fx3gNKy1NQF5E2P" 
+          crossorigin="anonymous"></script>
+</body>
+</html>
