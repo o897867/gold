@@ -50,6 +50,49 @@
       </div>
     </div>
     
+    <!-- Z-Score Analysis -->
+    <div class="card mb-3">
+      <div class="card-header">
+        Z-Score Analysis
+      </div>
+      <div class="card-body">
+        <p><strong>Z-Score Comment:</strong> {{ decision.zscore_comment }}</p>
+      </div>
+    </div>
+    
+    <!-- Bollinger Bands Analysis -->
+    <div class="card mb-3">
+      <div class="card-header">
+        Bollinger Bands Analysis
+      </div>
+      <div class="card-body">
+        <p><strong>Bollinger Comment:</strong> {{ decision.bollinger_comment }}</p>
+      </div>
+    </div>
+    
+    <!-- MACD Analysis -->
+    <div class="card mb-3">
+      <div class="card-header">
+        MACD Analysis
+      </div>
+      <div class="card-body">
+        <p><strong>MACD Comment:</strong> {{ decision.macd_comment }}</p>
+        {% if decision.macd_hist %}
+          <p><strong>MACD Histogram:</strong> {{ decision.macd_hist }}</p>
+        {% endif %}
+      </div>
+    </div>
+    
+    <!-- Volume Delta Analysis -->
+    <div class="card mb-3">
+      <div class="card-header">
+        Volume Delta Analysis
+      </div>
+      <div class="card-body">
+        <p><strong>Volume Delta Comment:</strong> {{ decision.vol_delta_comment }}</p>
+      </div>
+    </div>
+    
     <!-- Strategy Suggestion -->
     <div class="card mb-3">
       <div class="card-header">
@@ -58,6 +101,89 @@
       <div class="card-body">
         <p><strong>Suggested Strategy:</strong> {{ decision.strategy_suggestion }}</p>
         <p><strong>Reason:</strong> {{ decision.strategy_reason }}</p>
+      </div>
+    </div>
+    
+    <!-- Multi-Timeframe Support & Resistance -->
+    <div class="card mb-3">
+      <div class="card-header">
+        Multi-Timeframe Support & Resistance
+      </div>
+      <div class="card-body">
+        {% if decision.support_resistance %}
+          {% for tf, sr in decision.support_resistance.items() %}
+            <h5>{{ tf }}</h5>
+            {% if sr %}
+              <table class="table table-bordered">
+                <thead>
+                  <tr>
+                    <th>Indicator</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Pivot</td>
+                    <td>{{ sr.Pivot }}</td>
+                  </tr>
+                  <tr>
+                    <td>R1</td>
+                    <td>{{ sr.R1 }}</td>
+                  </tr>
+                  <tr>
+                    <td>S1</td>
+                    <td>{{ sr.S1 }}</td>
+                  </tr>
+                  <tr>
+                    <td>R2</td>
+                    <td>{{ sr.R2 }}</td>
+                  </tr>
+                  <tr>
+                    <td>S2</td>
+                    <td>{{ sr.S2 }}</td>
+                  </tr>
+                  <tr>
+                    <td>VWAP</td>
+                    <td>{{ sr.VWAP }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            {% else %}
+              <p>No data for this timeframe.</p>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+          <p>No support/resistance data available.</p>
+        {% endif %}
+      </div>
+    </div>
+    
+    <!-- Latest Indicators -->
+    <div class="card mb-3">
+      <div class="card-header">
+        Latest Indicators
+      </div>
+      <div class="card-body">
+        {% if decision.latest_indicators %}
+          <table class="table table-bordered">
+            <thead>
+              <tr>
+                <th>Indicator</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for key, value in decision.latest_indicators.items() %}
+                <tr>
+                  <td>{{ key }}</td>
+                  <td>{{ value }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p>No indicator data available.</p>
+        {% endif %}
       </div>
     </div>
     
