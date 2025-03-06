@@ -1,18 +1,19 @@
 import pandas as pd
 import numpy as np
 from indicator import (
-    calc_atr_optimized,   # 优化ATR函数（例如支持EWM平滑）
-    calc_pivots,          # 计算Pivot、R1、S1
-    calc_normality_test,  # 使用Jarque-Bera检验正态性
-    calculate_all_indicators,  # 整合 MA、MACD、RSI、Bollinger、Zscore、VolumeDelta 等
-    calc_multi_tf_support_resistance_with_volume  # 多周期支撑阻力和VWAP
+    calc_atr_optimized,
+    calc_pivots,
+    calc_normality_test,      # 仍然保留，但我们这边用 normality_test_vp
+    normality_test_vp,        # 新的正态性检测函数，基于 VP（成交量直方图）
+    calculate_all_indicators,
+    calc_multi_tf_support_resistance_with_volume
 )
 
 def strategy_decision(df):
     """
     接受 DataFrame（含 Open、High、Low、Close、Volume 等必要列），
-    计算各项技术指标，并输出包含 ATR、Pivot、正态性、Z-Score、
-    布林带、MACD、Volume Delta 以及多周期支撑阻力（Pivot, R1, S1, R2, S2, VWAP）
+    计算各项指标，并输出包含 ATR、Pivot、VP正态性检测（基于成交量分布）、Z-Score、
+    布林带、MACD、Volume Delta、GARCH 波动率以及多周期支撑阻力（Pivot, R1, S1, R2, S2, VWAP）
     的决策建议。
     
     返回:
@@ -20,29 +21,25 @@ def strategy_decision(df):
     """
     results = {}
 
-    # 1) 计算所有指标（返回包含多项指标的 DataFrame）
+    # 1) 计算所有指标（包括 GARCH 波动率等），返回带有各指标的 DataFrame
     df_ind = calculate_all_indicators(df)
     if len(df_ind) == 0:
         results["error"] = "数据不足，无法计算指标"
         return results
-
-    # 取最新一根K线的指标数据
     last_row = df_ind.iloc[-1]
 
-    # 2) ATR 分析：基于优化版ATR
+    # 2) ATR 分析（基于优化版 ATR）
     latest_atr = last_row.get("ATR_optimized", np.nan)
-    atr_threshold = 2.0  # 可根据历史统计调整
+    atr_threshold = 2.0
     if not np.isnan(latest_atr):
         if latest_atr > atr_threshold:
             results["volatility_comment"] = (
-                f"当前ATR={latest_atr:.2f} 高于阈值{atr_threshold}，说明波动较大，"
-                "可能处于趋势/突破行情。"
+                f"当前ATR={latest_atr:.2f} 高于阈值{atr_threshold}，说明波动较大，可能处于趋势/突破行情。"
             )
             results["market_condition"] = "高波动趋势或突破行情"
         else:
             results["volatility_comment"] = (
-                f"当前ATR={latest_atr:.2f} 低于阈值{atr_threshold}，说明波动较小，"
-                "行情偏震荡。"
+                f"当前ATR={latest_atr:.2f} 低于阈值{atr_threshold}，说明波动较小，行情偏震荡。"
             )
             results["market_condition"] = "低波动区间行情"
     else:
@@ -61,21 +58,22 @@ def strategy_decision(df):
     else:
         results["pivots"] = {}
 
-    # 4) 对数收益率正态性检验
-    df_ind["log_ret"] = np.log(df_ind["Close"] / df_ind["Close"].shift(1))
-    normal_test_res = calc_normality_test(df_ind["log_ret"])
-    if normal_test_res["is_normal"]:
-        results["normality_comment"] = (
-            f"JB p-value={normal_test_res['jb_pvalue']:.4f}，对数收益率分布近似正态。"
+    # 4) VP 正态性检测：基于指定日期的 Volume Profile 数据进行 Jarque-Bera 检验
+    # 这里选择最后一天的数据进行检测
+    last_day_str = df.index[-1].strftime('%Y-%m-%d')
+    vp_normal_test_res = normality_test_vp(df, last_day_str, bins=50)
+    if vp_normal_test_res["is_normal"]:
+        results["vp_normality_comment"] = (
+            f"VP JB p-value={vp_normal_test_res['jb_pvalue']:.4f}，成交量分布近似正态。"
         )
     else:
-        results["normality_comment"] = (
-            f"JB p-value={normal_test_res['jb_pvalue']:.4f}，对数收益率分布存在肥尾风险。"
+        results["vp_normality_comment"] = (
+            f"VP JB p-value={vp_normal_test_res['jb_pvalue']:.4f}，成交量分布存在肥尾风险。"
         )
 
-    # 5) 正态偏离分析（Z-Score）
+    # 5) Z-Score 分析
     zscore = last_row.get("Zscore", np.nan)
-    z_threshold = 2.0  # 可根据实际情况调整
+    z_threshold = 2.0
     if not np.isnan(zscore):
         if abs(zscore) > z_threshold:
             results["zscore_comment"] = (
@@ -140,34 +138,39 @@ def strategy_decision(df):
     else:
         results["vol_delta_comment"] = "无法计算Volume Delta"
 
-    # 9) 综合决策建议：结合ATR、MACD、Volume Delta及其他指标给出策略建议
+    # 9) GARCH 波动率分析
+    garch_vol = last_row.get("GARCH_vol", np.nan)
+    if not np.isnan(garch_vol):
+        results["garch_vol_comment"] = f"当前GARCH波动率为 {garch_vol:.4f}"
+    else:
+        results["garch_vol_comment"] = "无法计算GARCH波动率"
+
+    # 10) 综合决策建议
     if results["market_condition"] == "高波动趋势或突破行情":
         strategy = "趋势/突破交易"
         reason = (
-            "当前波动较大，若MACD呈多头且Volume Delta为正，说明买盘强劲，"
-            "适合顺势做多；若相反，则可考虑做空。"
+            "当前波动较大，若MACD呈多头且Volume Delta为正，说明买盘强劲，适合顺势做多；"
+            "若相反，则可考虑做空。"
         )
     elif results["market_condition"] == "低波动区间行情":
         strategy = "区间震荡交易"
-        reason = (
-            "当前波动较低，价格可能在布林中轨附近波动，适合区间震荡交易。"
-        )
+        reason = "当前波动较低，价格可能在布林中轨附近波动，适合区间震荡交易。"
     else:
         strategy = "观望"
         reason = "ATR或其他指标信号不明朗，建议暂时观望。"
     results["strategy_suggestion"] = strategy
     results["strategy_reason"] = reason
 
-    # 10) 输出所有最新指标值（便于查看）
+    # 11) 输出最新指标值
     indicator_keys = [
         "MA_20", "MA_50", "MACD_line", "MACD_signal", "MACD_hist",
         "RSI", "Bollinger_up", "Bollinger_mid", "Bollinger_down",
-        "Zscore", "VolumeDelta", "ATR_optimized"
+        "Zscore", "VolumeDelta", "ATR_optimized", "GARCH_vol"
     ]
     latest_indicators = {k: last_row[k] for k in indicator_keys if k in last_row}
     results["latest_indicators"] = latest_indicators
 
-    # 11) 新增：多周期支撑阻力与VWAP（15T, 1H, 4H, 1D）
+    # 12) 多周期支撑阻力与 VWAP（15T, 1H, 4H, 1D）
     multi_tf_sr = calc_multi_tf_support_resistance_with_volume(df, timeframes=["15T", "1H", "4H", "1D"])
     support_resistance = {}
     for tf, df_sr in multi_tf_sr.items():

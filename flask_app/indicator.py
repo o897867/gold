@@ -107,6 +107,7 @@ from io import BytesIO
 import base64
 import scipy.stats as st
 from scipy.signal import find_peaks
+from arch import arch_model
 
 
 
@@ -363,6 +364,34 @@ def calc_atr_optimized(df, window=14, method='sma'):
         raise ValueError("method 参数必须为 'sma' 或 'ewm'")
     
     return df
+def calc_garch_volatility(df, p=1, q=1):
+    """
+    使用 GARCH(p, q) 模型计算波动率。
+    
+    参数:
+      df: DataFrame，必须包含 'Close' 列，索引为 datetime 格式。
+      p: ARCH 模型的滞后阶数，默认 1
+      q: GARCH 模型的滞后阶数，默认 1
+      
+    返回:
+      df: 原始 DataFrame，新增 'log_ret' 和 'GARCH_vol' 列，
+          'log_ret' 为对数收益率，
+          'GARCH_vol' 为基于 GARCH 模型计算的条件波动率（标准差）。
+      res: GARCH 模型的拟合结果对象，便于进一步分析。
+    """
+    df = df.copy()
+    # 计算对数收益率（可以乘以100以便于模型拟合，但这里保持原尺度）
+    df["log_ret"] = np.log(df["Close"] / df["Close"].shift(1))
+    df = df.dropna()
+
+    # 定义 GARCH 模型：采用常数均值模型，残差服从正态分布
+    # 这里将对数收益率乘以 100，提高模型的数值稳定性（可选）
+    am = arch_model(df["log_ret"] * 100, vol="Garch", p=p, q=q, mean="Constant", dist="normal")
+    res = am.fit(disp="off")
+    
+    # 模型拟合后，计算条件波动率，并转换回原尺度
+    df["GARCH_vol"] = res.conditional_volatility / 100.0
+    return df, res
 
 
 ########################################
@@ -379,6 +408,8 @@ def calculate_all_indicators(df):
     """
     # 先将 df 复制，避免修改原始数据
     df = df.copy()
+    # Garch波动率
+    df,garch_result = calc_garch_volatility(df, p=1, q=1)
     
     # 1) ATR（简单） + 优化版ATR（二选一或者都留着做对比）
     df = calc_atr(df, window=14)  # 简易 ATR
@@ -403,6 +434,8 @@ def calculate_all_indicators(df):
     df = calc_vol_delta_naive(df)
     
     return df
+
+
 
 
 ########################################
