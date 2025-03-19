@@ -444,49 +444,62 @@ def calculate_all_indicators(df):
 
 def calc_multi_tf_support_resistance_with_volume(df, timeframes=["15T", "1H", "4H", "1D"]):
     """
-    针对15分钟、1小时、4小时和日线周期，计算支撑阻力位，同时结合成交量计算 VWAP。
-    
-    对于每个周期：
-      - 重采样计算周期内的最高价、最低价、最后收盘价及总成交量
-      - 计算经典 Pivot Point 公式：
-          Pivot = (High + Low + Close) / 3
-          R1 = 2 * Pivot - Low
-          S1 = 2 * Pivot - High
-          R2 = Pivot + (High - Low)
-          S2 = Pivot - (High - Low)
-      - 计算 VWAP (Volume Weighted Average Price)：
-          VWAP = (sum(Close * Volume) / sum(Volume)) 对于该周期
-      
-    参数:
-      df: DataFrame，必须包含 'High', 'Low', 'Close', 'Volume' 列，且索引为 pd.DatetimeIndex
-      timeframes: list，周期字符串，默认为 ["15T", "1H", "4H", "1D"]
-      
-    返回:
-      results: dict，键为周期，值为对应周期的支撑阻力和 VWAP 数据（DataFrame）
+    针对不同时间框架计算支撑阻力位和VWAP。
     """
     results = {}
     for tf in timeframes:
-        # 重采样：计算每个周期内的最高价、最低价、最后的收盘价及总成交量
-        resampled = df.resample(tf).agg({
-            "High": "max",
-            "Low": "min",
-            "Close": "last",
-            "Volume": "sum"
-        }).dropna()
-        
-        # 计算经典Pivot及支撑阻力位
-        resampled["Pivot"] = (resampled["High"] + resampled["Low"] + resampled["Close"]) / 3
-        resampled["R1"] = 2 * resampled["Pivot"] - resampled["Low"]
-        resampled["S1"] = 2 * resampled["Pivot"] - resampled["High"]
-        resampled["R2"] = resampled["Pivot"] + (resampled["High"] - resampled["Low"])
-        resampled["S2"] = resampled["Pivot"] - (resampled["High"] - resampled["Low"])
-        
-        # 计算VWAP：利用周期内所有K线的成交量加权平均价格
-        # 注意，这里用到整个周期内 Close * Volume 的和除以总成交量
-        vwap = (df["Close"] * df["Volume"]).resample(tf).sum() / resampled["Volume"]
-        resampled["VWAP"] = vwap
-        
-        results[tf] = resampled
+        try:
+            # 重采样：计算每个周期内的最高价、最低价、最后的收盘价及总成交量
+            resampled = df.resample(tf).agg({
+                "High": "max",
+                "Low": "min",
+                "Close": "last",
+                "Volume": "sum"
+            }).dropna()
+            
+            if len(resampled) == 0:
+                print(f"No data after resampling for timeframe {tf}")
+                results[tf] = {}
+                continue
+            
+            # 计算经典Pivot及支撑阻力位
+            resampled["Pivot"] = (resampled["High"] + resampled["Low"] + resampled["Close"]) / 3
+            resampled["R1"] = 2 * resampled["Pivot"] - resampled["Low"]
+            resampled["S1"] = 2 * resampled["Pivot"] - resampled["High"]
+            resampled["R2"] = resampled["Pivot"] + (resampled["High"] - resampled["Low"])
+            resampled["S2"] = resampled["Pivot"] - (resampled["High"] - resampled["Low"])
+            
+            # 计算VWAP
+            try:
+                vwap = (df["Close"] * df["Volume"]).resample(tf).sum() / resampled["Volume"]
+                resampled["VWAP"] = vwap
+            except:
+                # 如果VWAP计算失败，使用简单移动平均
+                resampled["VWAP"] = resampled["Close"].rolling(3).mean()
+            
+            if len(resampled) > 0:
+                results[tf] = resampled.iloc[-1].to_dict()
+            else:
+                results[tf] = {}
+                
+        except Exception as e:
+            print(f"Error calculating support/resistance for timeframe {tf}: {e}")
+            results[tf] = {}
+    
+    # 确保至少有一个时间框架有数据
+    if all(not data for data in results.values()):
+        print("No valid data for any timeframe, creating fallback values")
+        # 创建一些基于当前价格的默认值
+        current_price = df["Close"].iloc[-1] if len(df) > 0 else 0
+        results["fallback"] = {
+            "Pivot": current_price,
+            "R1": current_price * 1.01,
+            "S1": current_price * 0.99,
+            "R2": current_price * 1.02,
+            "S2": current_price * 0.98,
+            "VWAP": current_price
+        }
+    
     return results
 
 # 示例用法：
@@ -495,3 +508,421 @@ def calc_multi_tf_support_resistance_with_volume(df, timeframes=["15T", "1H", "4
 # 打印日线周期的支撑阻力及 VWAP 数据：
 # print(multi_tf_results["1D"].tail())
 
+def identify_support_resistance_zones(multi_tf_sr, price_tolerance=0.5):  # 从2.0降低到0.5美金
+    """
+    Identify high-probability support and resistance zones by finding confluences
+    across multiple timeframes.
+    
+    Parameters:
+      multi_tf_sr: Dict containing S/R levels for multiple timeframes
+      price_tolerance: Max price difference to consider levels as confluent
+      
+    Returns:
+      Dict with strong support and resistance zones
+    """
+    # 基本结构不变
+    all_resistance = []
+    all_support = []
+    
+    # 调试信息
+    print(f"Processing timeframes: {list(multi_tf_sr.keys())}")
+    
+    for tf, levels in multi_tf_sr.items():
+        # 更安全的空值检查
+        if levels is None or not isinstance(levels, dict) or len(levels) == 0:
+            print(f"Skipping empty timeframe: {tf}")
+            continue
+            
+        # 确保关键数据存在
+        if not all(key in levels for key in ["R1", "R2", "S1", "S2"]):
+            print(f"Missing required keys in timeframe {tf}: {levels.keys()}")
+            continue
+            
+        try:
+            # 添加阻力位
+            all_resistance.extend([
+                {"price": float(levels["R1"]), "level": "R1", "timeframe": tf},
+                {"price": float(levels["R2"]), "level": "R2", "timeframe": tf}
+            ])
+            
+            # 添加支撑位
+            all_support.extend([
+                {"price": float(levels["S1"]), "level": "S1", "timeframe": tf},
+                {"price": float(levels["S2"]), "level": "S2", "timeframe": tf}
+            ])
+            print(f"Added levels from {tf}: R1={levels['R1']}, R2={levels['R2']}, S1={levels['S1']}, S2={levels['S2']}")
+        except (KeyError, TypeError, ValueError) as e:
+            print(f"Error processing timeframe {tf}: {e}")
+            continue
+    
+    # 如果没有收集到任何数据，提供默认值
+    if not all_resistance and not all_support:
+        print("No valid support/resistance levels found in any timeframe")
+        return {
+            "resistance_zones": [],
+            "support_zones": []
+        }
+    
+    # 其余聚类逻辑保持不变
+    resistance_zones = []
+    support_zones = []
+    
+    # 处理阻力位
+    if all_resistance:
+        all_resistance.sort(key=lambda x: x["price"])
+        current_zone = []
+        
+        for level in all_resistance:
+            if not current_zone or abs(level["price"] - current_zone[0]["price"]) <= price_tolerance:
+                current_zone.append(level)
+            else:
+                # 不要要求至少2个时间框架，可以放宽到1个
+                zone_price = sum(x["price"] for x in current_zone) / len(current_zone)
+                resistance_zones.append({
+                    "price": zone_price,
+                    "strength": len(current_zone),
+                    "timeframes": [x["timeframe"] for x in current_zone],
+                    "levels": [x["level"] for x in current_zone]
+                })
+                current_zone = [level]
+        
+        # 添加最后一个区域
+        if current_zone:
+            zone_price = sum(x["price"] for x in current_zone) / len(current_zone)
+            resistance_zones.append({
+                "price": zone_price,
+                "strength": len(current_zone),
+                "timeframes": [x["timeframe"] for x in current_zone],
+                "levels": [x["level"] for x in current_zone]
+            })
+    
+    # 处理支撑位（类似逻辑）
+    if all_support:
+        all_support.sort(key=lambda x: x["price"])
+        current_zone = []
+        
+        for level in all_support:
+            if not current_zone or abs(level["price"] - current_zone[0]["price"]) <= price_tolerance:
+                current_zone.append(level)
+            else:
+                # 不要要求至少2个时间框架
+                zone_price = sum(x["price"] for x in current_zone) / len(current_zone)
+                support_zones.append({
+                    "price": zone_price,
+                    "strength": len(current_zone),
+                    "timeframes": [x["timeframe"] for x in current_zone],
+                    "levels": [x["level"] for x in current_zone]
+                })
+                current_zone = [level]
+        
+        # 添加最后一个区域
+        if current_zone:
+            zone_price = sum(x["price"] for x in current_zone) / len(current_zone)
+            support_zones.append({
+                "price": zone_price,
+                "strength": len(current_zone),
+                "timeframes": [x["timeframe"] for x in current_zone],
+                "levels": [x["level"] for x in current_zone]
+            })
+    
+    print(f"Identified {len(resistance_zones)} resistance zones and {len(support_zones)} support zones")
+    return {
+        "resistance_zones": resistance_zones,
+        "support_zones": support_zones
+    }
+
+def validate_sr_with_historical_data(df, sr_levels, price_tolerance=0.3, reaction_threshold=0.1):
+    """
+    使用历史价格反应验证支撑/阻力位。
+    
+    Parameters:
+      df: DataFrame with OHLC data
+      sr_levels: Dict with support and resistance levels
+      price_tolerance: Max distance to consider price as "testing" a level (0.3美金)
+      reaction_threshold: Min % move after testing level to confirm it (降至0.1%)
+      
+    Returns:
+      Dict with validated S/R levels and their strength scores
+    """
+    try:
+        # 检查sr_levels是否有效
+        if not isinstance(sr_levels, dict):
+            print(f"Invalid sr_levels type: {type(sr_levels)}")
+            return {"resistance": [], "support": []}
+        
+        # 如果没有支撑/阻力区域，直接返回默认值
+        if len(sr_levels.get("resistance_zones", [])) == 0 and len(sr_levels.get("support_zones", [])) == 0:
+            print("No zones to validate")
+            # 创建一些基于价格范围的临时支撑阻力位
+            current_price = df["Close"].iloc[-1]
+            price_min, price_max = df["Low"].min(), df["High"].max()
+            price_range = price_max - price_min
+            
+            return {
+                "resistance": [
+                    {"price": current_price * 1.01, "strength": 0.6, "tests": 0, "reaction_rate": 0},
+                    {"price": current_price * 1.02, "strength": 0.7, "tests": 0, "reaction_rate": 0}
+                ],
+                "support": [
+                    {"price": current_price * 0.99, "strength": 0.6, "tests": 0, "reaction_rate": 0},
+                    {"price": current_price * 0.98, "strength": 0.7, "tests": 0, "reaction_rate": 0}
+                ]
+            }
+            
+        validated_levels = {"resistance": [], "support": []}
+        
+        # 处理阻力位
+        for r_zone in sr_levels.get("resistance_zones", []):
+            if "price" not in r_zone:
+                continue
+                
+            price = r_zone["price"]
+            reactions = 0
+            total_tests = 0
+            
+            for i in range(1, len(df) - 1):
+                # 检查价格是否接近阻力位
+                if (df["High"].iloc[i] >= price - price_tolerance and 
+                    df["High"].iloc[i] <= price + price_tolerance):
+                    total_tests += 1
+                    
+                    # 检查价格反应（测试后下跌）
+                    if (df["Close"].iloc[i+1] < df["Close"].iloc[i] * (1 - reaction_threshold/100)):
+                        reactions += 1
+            
+            # 即使没有测试也添加
+            reaction_rate = reactions / max(total_tests, 1)
+            validated_levels["resistance"].append({
+                "price": price,
+                "tests": total_tests,
+                "reaction_rate": reaction_rate,
+                "strength": r_zone.get("strength", 1) * (0.5 + reaction_rate/2)
+            })
+        
+        # 处理支撑位（类似逻辑）
+        for s_zone in sr_levels.get("support_zones", []):
+            if "price" not in s_zone:
+                continue
+                
+            price = s_zone["price"]
+            reactions = 0
+            total_tests = 0
+            
+            for i in range(1, len(df) - 1):
+                # 检查价格是否接近支撑位
+                if (df["Low"].iloc[i] <= price + price_tolerance and 
+                    df["Low"].iloc[i] >= price - price_tolerance):
+                    total_tests += 1
+                    
+                    # 检查价格反应（测试后上涨）
+                    if (df["Close"].iloc[i+1] > df["Close"].iloc[i] * (1 + reaction_threshold/100)):
+                        reactions += 1
+            
+            reaction_rate = reactions / max(total_tests, 1)
+            validated_levels["support"].append({
+                "price": price,
+                "tests": total_tests,
+                "reaction_rate": reaction_rate,
+                "strength": s_zone.get("strength", 1) * (0.5 + reaction_rate/2)
+            })
+        
+        # 如果没有找到有效的支撑/阻力位，创建一些基于当前价格的临时位置
+        if not validated_levels["resistance"] or not validated_levels["support"]:
+            current_price = df["Close"].iloc[-1]
+            if not validated_levels["resistance"]:
+                validated_levels["resistance"] = [
+                    {"price": current_price * 1.01, "strength": 0.6, "tests": 0, "reaction_rate": 0},
+                    {"price": current_price * 1.02, "strength": 0.7, "tests": 0, "reaction_rate": 0}
+                ]
+            if not validated_levels["support"]:
+                validated_levels["support"] = [
+                    {"price": current_price * 0.99, "strength": 0.6, "tests": 0, "reaction_rate": 0},
+                    {"price": current_price * 0.98, "strength": 0.7, "tests": 0, "reaction_rate": 0}
+                ]
+        
+        return validated_levels
+        
+    except Exception as e:
+        print(f"Error in validate_sr_with_historical_data: {e}")
+        return {"resistance": [], "support": []}
+
+def enhance_sr_with_volume_profile(df, sr_levels, num_bins=50):
+    """
+    Enhance support/resistance levels using volume profile data.
+    
+    Parameters:
+      df: DataFrame with OHLC and Volume data
+      sr_levels: Dict with support and resistance levels
+      num_bins: Number of bins for volume profile
+      
+    Returns:
+      Dict with enhanced S/R levels incorporating volume data
+    """
+    try:
+        # 检查输入参数
+        if not isinstance(sr_levels, dict):
+            print(f"Invalid sr_levels type: {type(sr_levels)}")
+            sr_levels = {"resistance": [], "support": []}
+            
+        # 如果没有支撑/阻力区域，直接返回默认值
+        if len(sr_levels.get("resistance", [])) == 0 and len(sr_levels.get("support", [])) == 0:
+            print("No zones to enhance")
+            return {"resistance": [], "support": []}
+            
+        # 计算成交量分布
+        price_min = df["Low"].min()
+        price_max = df["High"].max()
+        prices = df["Close"].values
+        vols = df["Volume"].values
+        
+        hist, bin_edges = np.histogram(prices, bins=num_bins, range=(price_min, price_max), weights=vols)
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        
+        # 找出高成交量节点
+        mean_vol = np.mean(hist)
+        std_vol = np.std(hist)
+        high_vol_threshold = mean_vol + 1.0 * std_vol  # 降低阈值
+        
+        high_vol_nodes = []
+        for i, vol in enumerate(hist):
+            if vol > high_vol_threshold:
+                high_vol_nodes.append({
+                    "price": bin_centers[i],
+                    "volume": vol,
+                    "vol_strength": (vol - mean_vol) / (std_vol + 1e-8)  # 防止除零
+                })
+        
+        # 增强现有支撑/阻力位
+        enhanced_levels = {"resistance": [], "support": []}
+        
+        # 处理阻力位
+        for r_level in sr_levels.get("resistance", []):
+            if "price" not in r_level:
+                continue
+                
+            # 寻找附近的成交量节点
+            matching_nodes = [node for node in high_vol_nodes 
+                              if abs(node["price"] - r_level["price"]) <= (price_max - price_min) / num_bins * 3]  # 增大搜索范围
+            
+            if matching_nodes:
+                # 调整价格
+                avg_node_price = sum(node["price"] for node in matching_nodes) / len(matching_nodes)
+                avg_vol_strength = sum(node["vol_strength"] for node in matching_nodes) / len(matching_nodes)
+                
+                enhanced_price = (r_level["price"] * r_level.get("strength", 1) + 
+                                 avg_node_price * avg_vol_strength) / (r_level.get("strength", 1) + avg_vol_strength)
+                
+                enhanced_levels["resistance"].append({
+                    "price": enhanced_price,
+                    "original_price": r_level["price"],
+                    "strength": r_level.get("strength", 1) * (1 + 0.3 * avg_vol_strength),
+                    "volume_confirmed": True
+                })
+            else:
+                # 没有成交量确认也添加
+                enhanced_levels["resistance"].append({
+                    "price": r_level["price"],
+                    "strength": r_level.get("strength", 1),
+                    "volume_confirmed": False
+                })
+        
+        # 处理支撑位（类似逻辑）
+        for s_level in sr_levels.get("support", []):
+            if "price" not in s_level:
+                continue
+                
+            matching_nodes = [node for node in high_vol_nodes 
+                              if abs(node["price"] - s_level["price"]) <= (price_max - price_min) / num_bins * 3]
+            
+            if matching_nodes:
+                avg_node_price = sum(node["price"] for node in matching_nodes) / len(matching_nodes)
+                avg_vol_strength = sum(node["vol_strength"] for node in matching_nodes) / len(matching_nodes)
+                
+                enhanced_price = (s_level["price"] * s_level.get("strength", 1) + 
+                                 avg_node_price * avg_vol_strength) / (s_level.get("strength", 1) + avg_vol_strength)
+                
+                enhanced_levels["support"].append({
+                    "price": enhanced_price,
+                    "original_price": s_level["price"],
+                    "strength": s_level.get("strength", 1) * (1 + 0.3 * avg_vol_strength),
+                    "volume_confirmed": True
+                })
+            else:
+                enhanced_levels["support"].append({
+                    "price": s_level["price"],
+                    "strength": s_level.get("strength", 1),
+                    "volume_confirmed": False
+                })
+        
+        # 如果找不到支撑/阻力位，添加基于成交量的临时支撑/阻力位
+        if not enhanced_levels["resistance"] and high_vol_nodes:
+            # 找出当前价格以上的高成交量节点作为阻力位
+            current_price = df["Close"].iloc[-1]
+            potential_resistance = [node for node in high_vol_nodes if node["price"] > current_price]
+            
+            if potential_resistance:
+                # 按距离排序，取最近的3个
+                potential_resistance.sort(key=lambda x: abs(x["price"] - current_price))
+                for node in potential_resistance[:3]:
+                    enhanced_levels["resistance"].append({
+                        "price": node["price"],
+                        "strength": 1.0 * node["vol_strength"] / 3.0,
+                        "volume_confirmed": True,
+                        "auto_generated": True
+                    })
+        
+        if not enhanced_levels["support"] and high_vol_nodes:
+            # 找出当前价格以下的高成交量节点作为支撑位
+            current_price = df["Close"].iloc[-1]
+            potential_support = [node for node in high_vol_nodes if node["price"] < current_price]
+            
+            if potential_support:
+                # 按距离排序，取最近的3个
+                potential_support.sort(key=lambda x: abs(x["price"] - current_price))
+                for node in potential_support[:3]:
+                    enhanced_levels["support"].append({
+                        "price": node["price"],
+                        "strength": 1.0 * node["vol_strength"] / 3.0,
+                        "volume_confirmed": True,
+                        "auto_generated": True
+                    })
+        
+        # 如果仍然找不到，使用简单的价格区间作为支撑阻力
+        if not enhanced_levels["resistance"]:
+            current_price = df["Close"].iloc[-1]
+            price_range = price_max - price_min
+            enhanced_levels["resistance"].append({
+                "price": current_price + price_range * 0.02,
+                "strength": 0.5,
+                "volume_confirmed": False,
+                "auto_generated": True
+            })
+            enhanced_levels["resistance"].append({
+                "price": current_price + price_range * 0.05,
+                "strength": 0.7,
+                "volume_confirmed": False,
+                "auto_generated": True
+            })
+        
+        if not enhanced_levels["support"]:
+            current_price = df["Close"].iloc[-1]
+            price_range = price_max - price_min
+            enhanced_levels["support"].append({
+                "price": current_price - price_range * 0.02,
+                "strength": 0.5,
+                "volume_confirmed": False,
+                "auto_generated": True
+            })
+            enhanced_levels["support"].append({
+                "price": current_price - price_range * 0.05,
+                "strength": 0.7,
+                "volume_confirmed": False,
+                "auto_generated": True
+            })
+            
+        return enhanced_levels
+        
+    except Exception as e:
+        print(f"Error in enhance_sr_with_volume_profile: {e}")
+        # 返回一个默认值，而不是抛出异常
+        return {"resistance": [], "support": []}

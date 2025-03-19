@@ -20,10 +20,10 @@ import indicator
 import decision
 from flask import request, jsonify
 import datetime
-from decision import strategy_decision
+from decision import enhanced_strategy_decision, strategy_decision
 import pandas as pd
 
-code = 'BTCUSDT'
+code = 'XAUUSD'
 app = Flask(__name__)
 current_orderbook = {
     "bids": [],
@@ -36,7 +36,7 @@ def add_tick_data(data):
 def check_auth(username, password):
     """验证用户名和密码是否正确"""
     # 修改这里的用户名和密码为你需要的
-    return username == 'tmgm' and password == 'glzdggls'
+    return username == 'tmgm' or username == 'joyce' and password == 'glzdggls' or password == 'joycepw'
 
 def authenticate():
     """返回 401 响应，提示输入正确的凭证"""
@@ -406,6 +406,9 @@ def decision():
     if not date_str:
         date_str = datetime.datetime.today().strftime('%Y-%m-%d')
     
+    # Get the language parameter, default to Chinese
+    #language = request.args.get('lang', 'cn')
+    
     # Filter the historical DataFrame for the given date.
     with data_manager.lock:
         try:
@@ -415,10 +418,10 @@ def decision():
             if isinstance(df_day, pd.Series):
                 df_day = df_day.to_frame().T
         except Exception as e:
-            return f"<h3>No data found for date {date_str}. Error: {e}</h3>"
+            return f"<h3>该日期 {date_str} 没有数据. 错误: {e}</h3>"
     
-    # Call the decision function
-    decision_result = strategy_decision(df_day)
+    # Call the enhanced decision function without order book
+    decision_result = enhanced_strategy_decision(df_day)
     
     # Render the decision page using the template.
     return render_template("decision.html", decision=decision_result, date=date_str)

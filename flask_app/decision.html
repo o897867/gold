@@ -2,168 +2,407 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Market Decision for {{ date }}</title>
+  <title>交易决策分析 {{ date }}</title>
   <link
     href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
     rel="stylesheet"
     integrity="sha384-ENjdO4Dr2bkBIFxQpeoKJfYbF6GA0cF7F5/1nLYxCP9xU1R8kN9p80cXhW8yL9R+"
     crossorigin="anonymous">
+  <style>
+    .confidence-badge {
+      font-size: 1rem;
+      padding: 0.5rem;
+    }
+    .confidence-high {
+      background-color: #28a745;
+    }
+    .confidence-medium {
+      background-color: #ffc107;
+      color: #212529;
+    }
+    .confidence-low {
+      background-color: #dc3545;
+    }
+    .strength-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    .strength-high {
+      background-color: #28a745;
+    }
+    .strength-medium {
+      background-color: #ffc107;
+    }
+    .strength-low {
+      background-color: #dc3545;
+    }
+  </style>
 </head>
 <body>
   <div class="container my-4">
-    <h1 class="mb-4">Market Decision for {{ date }}</h1>
+    <h1 class="mb-4">交易决策分析 {{ date }}</h1>
     
-    <!-- Volatility and Market Condition -->
-    <div class="card mb-3">
-      <div class="card-header">
-        Volatility & Market Condition
+    <!-- Enhanced Decision Recommendation -->
+    {% if decision.enhanced_decision %}
+    <div class="card mb-3 border-primary">
+      <div class="card-header bg-primary text-white">
+        <h3 class="mb-0">交易建议</h3>
       </div>
       <div class="card-body">
-        <p><strong>Volatility Comment:</strong> {{ decision.volatility_comment }}</p>
-        <p><strong>Market Condition:</strong> {{ decision.market_condition }}</p>
+        <div class="row">
+          <div class="col-md-6">
+            {% if decision.enhanced_decision.action %}
+              <h2>
+                建议操作: 
+                <span class="badge {% if decision.enhanced_decision.action == '买入' %}bg-success{% elif decision.enhanced_decision.action == '卖出' %}bg-danger{% else %}bg-secondary{% endif %}">
+                  {{ decision.enhanced_decision.action }}
+                </span>
+              </h2>
+              <p><strong>信心指数:</strong> 
+                {% set confidence = decision.enhanced_decision.confidence|float * 100 %}
+                <span class="badge confidence-badge 
+                  {% if confidence > 70 %}confidence-high{% elif confidence > 50 %}confidence-medium{% else %}confidence-low{% endif %}">
+                  {{ "%.1f"|format(confidence) }}%
+                </span>
+              </p>
+              <p><strong>主要依据:</strong> {{ decision.enhanced_decision.primary_reason }}</p>
+              {% if decision.enhanced_decision.risk_reward_ratio %}
+                <p><strong>风险回报比:</strong> 1:{{ "%.2f"|format(decision.enhanced_decision.risk_reward_ratio) }}</p>
+              {% endif %}
+              <!-- 在交易建议卡片中添加 -->
+              {% if decision.enhanced_decision.leverage_risk %}
+              <p><strong>杠杆风险评估:</strong> {{ decision.enhanced_decision.leverage_risk }}</p>
+              {% endif %}
+
+              {% if decision.enhanced_decision.suggested_position %}
+              <p><strong>建议仓位大小:</strong> {{ "%.2f"|format(decision.enhanced_decision.suggested_position) }} 手</p>
+              {% endif %}
+
+              {% if decision.enhanced_decision.stop_loss %}
+              <p><strong>建议止损位:</strong> {{ "%.2f"|format(decision.enhanced_decision.stop_loss) }}</p>
+              <p><strong>止损距离:</strong> {{ "%.1f"|format(decision.enhanced_decision.stop_loss_pips) }} pips</p>
+              {% endif %}
+
+              {% if decision.enhanced_decision.trading_time_comment %}
+              <p><strong>交易时段建议:</strong> {{ decision.enhanced_decision.trading_time_comment }}</p>
+              {% endif %}
+            {% else %}
+              <h3>无明确交易信号，建议观望</h3>
+            {% endif %}
+          </div>
+          <div class="col-md-6">
+            {% if decision.market_context %}
+              <div class="card">
+                <div class="card-header">市场环境</div>
+                <div class="card-body">
+                  <p><strong>市场模式:</strong> {{ decision.market_context.market_regime }}</p>
+                  <p><strong>价格变化百分比:</strong> {{ "%.2f"|format(decision.market_context.price_change_pct) }}%</p>
+                  <p><strong>波动性环境:</strong> {{ decision.market_context.volatility_regime }}</p>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        </div>
       </div>
     </div>
-    
-    <!-- GARCH Volatility Analysis -->
+    {% endif %}
+
+    <!-- Signal Probabilities from Backtesting -->
+    {% if decision.signal_probabilities %}
     <div class="card mb-3">
       <div class="card-header">
-        GARCH Volatility Analysis
+        <h5 class="mb-0">历史信号胜率</h5>
       </div>
       <div class="card-body">
-        <p><strong>GARCH Volatility Comment:</strong> {{ decision.garch_vol_comment }}</p>
+        <div class="row">
+          {% for signal_type, data in decision.signal_probabilities.items() %}
+            {% if data.total > 0 %}
+              <div class="col-md-4 mb-3">
+                <div class="card h-100">
+                  <div class="card-header">
+                    {% if signal_type == "macd_cross_up" %}
+                      MACD金叉
+                    {% elif signal_type == "macd_cross_down" %}
+                      MACD死叉
+                    {% elif signal_type == "bollinger_breakout_up" %}
+                      布林上轨突破
+                    {% elif signal_type == "bollinger_breakout_down" %}
+                      布林下轨突破
+                    {% elif signal_type == "rsi_oversold" %}
+                      RSI超卖
+                    {% elif signal_type == "rsi_overbought" %}
+                      RSI超买
+                    {% else %}
+                      {{ signal_type }}
+                    {% endif %}
+                  </div>
+                  <div class="card-body">
+                    <h3 class="text-center mb-3">
+                      <span class="badge 
+                        {% if data.win_rate > 65 %}bg-success
+                        {% elif data.win_rate > 50 %}bg-warning text-dark
+                        {% else %}bg-danger{% endif %}">
+                        {{ "%.1f"|format(data.win_rate) }}%
+                      </span>
+                    </h3>
+                    <p class="mb-0 text-center">胜率 ({{ data.wins }}/{{ data.total }})</p>
+                  </div>
+                </div>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
       </div>
     </div>
+    {% endif %}
     
-    <!-- Daily Pivot Points -->
+    <!-- Enhanced Support & Resistance -->
+    {% if decision.enhanced_sr %}
     <div class="card mb-3">
       <div class="card-header">
-        Daily Pivot Points
+        <h5 class="mb-0">增强型支撑与阻力位</h5>
       </div>
       <div class="card-body">
-        {% if decision.pivots %}
-          <p><strong>Pivot:</strong> {{ decision.pivots.pivot }}</p>
-          <p><strong>Resistance (R1):</strong> {{ decision.pivots.R1 }}</p>
-          <p><strong>Support (S1):</strong> {{ decision.pivots.S1 }}</p>
-        {% else %}
-          <p>No pivot data available for this day.</p>
-        {% endif %}
+        <div class="row">
+          <div class="col-md-6">
+            <h5>阻力位</h5>
+            <table class="table table-bordered">
+              <thead>
+                <tr>
+                  <th>价格</th>
+                  <th>强度</th>
+                  <th>成交量确认</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for level in decision.enhanced_sr.resistance|sort(attribute='price') %}
+                  <tr>
+                    <td>{{ "%.2f"|format(level.price) }}</td>
+                    <td>
+                      <div class="strength-indicator 
+                        {% if level.strength > 3 %}strength-high
+                        {% elif level.strength > 1.5 %}strength-medium
+                        {% else %}strength-low{% endif %}">
+                      </div>
+                      {{ "%.1f"|format(level.strength) }}
+                    </td>
+                    <td>{{ "是" if level.volume_confirmed else "否" }}</td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="3">无可用阻力位数据</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="col-md-6">
+            <h5>支撑位</h5>
+            <table class="table table-bordered">
+              <thead>
+                <tr>
+                  <th>价格</th>
+                  <th>强度</th>
+                  <th>成交量确认</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for level in decision.enhanced_sr.support|sort(attribute='price', reverse=true) %}
+                  <tr>
+                    <td>{{ "%.2f"|format(level.price) }}</td>
+                    <td>
+                      <div class="strength-indicator 
+                        {% if level.strength > 3 %}strength-high
+                        {% elif level.strength > 1.5 %}strength-medium
+                        {% else %}strength-low{% endif %}">
+                      </div>
+                      {{ "%.1f"|format(level.strength) }}
+                    </td>
+                    <td>{{ "是" if level.volume_confirmed else "否" }}</td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="3">无可用支撑位数据</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
+    {% endif %}
     
-    <!-- Normality Test -->
+    <!-- Original Analysis -->
     <div class="card mb-3">
       <div class="card-header">
-        Normality Test
+        <h5 class="mb-0">原始分析</h5>
       </div>
       <div class="card-body">
-        <p><strong>Normality Comment:</strong> {{ decision.normality_comment }}</p>
-      </div>
-    </div>
-    
-    <!-- Z-Score Analysis -->
-    <div class="card mb-3">
-      <div class="card-header">
-        Z-Score Analysis
-      </div>
-      <div class="card-body">
-        <p><strong>Z-Score Comment:</strong> {{ decision.zscore_comment }}</p>
-      </div>
-    </div>
-    
-    <!-- Bollinger Bands Analysis -->
-    <div class="card mb-3">
-      <div class="card-header">
-        Bollinger Bands Analysis
-      </div>
-      <div class="card-body">
-        <p><strong>Bollinger Comment:</strong> {{ decision.bollinger_comment }}</p>
-      </div>
-    </div>
-    
-    <!-- MACD Analysis -->
-    <div class="card mb-3">
-      <div class="card-header">
-        MACD Analysis
-      </div>
-      <div class="card-body">
-        <p><strong>MACD Comment:</strong> {{ decision.macd_comment }}</p>
-        {% if decision.macd_hist %}
-          <p><strong>MACD Histogram:</strong> {{ decision.macd_hist }}</p>
-        {% endif %}
-      </div>
-    </div>
-    
-    <!-- Volume Delta Analysis -->
-    <div class="card mb-3">
-      <div class="card-header">
-        Volume Delta Analysis
-      </div>
-      <div class="card-body">
-        <p><strong>Volume Delta Comment:</strong> {{ decision.vol_delta_comment }}</p>
-      </div>
-    </div>
-    
-    <!-- Strategy Suggestion -->
-    <div class="card mb-3">
-      <div class="card-header">
-        Strategy Suggestion
-      </div>
-      <div class="card-body">
-        <p><strong>Suggested Strategy:</strong> {{ decision.strategy_suggestion }}</p>
-        <p><strong>Reason:</strong> {{ decision.strategy_reason }}</p>
+        <div class="row">
+          <div class="col-md-6">
+            <!-- Volatility and Market Condition -->
+            <div class="card mb-3">
+              <div class="card-header">
+                波动性和市场状况
+              </div>
+              <div class="card-body">
+                <p><strong>波动性分析:</strong> {{ decision.volatility_comment }}</p>
+                <p><strong>市场状况:</strong> {{ decision.market_condition }}</p>
+              </div>
+            </div>
+            
+            <!-- GARCH Volatility Analysis -->
+            <div class="card mb-3">
+              <div class="card-header">
+                GARCH波动性分析
+              </div>
+              <div class="card-body">
+                <p><strong>GARCH波动率:</strong> {{ decision.garch_vol_comment }}</p>
+              </div>
+            </div>
+            
+            <!-- Daily Pivot Points -->
+            <div class="card mb-3">
+              <div class="card-header">
+                日内轴心点
+              </div>
+              <div class="card-body">
+                {% if decision.pivots %}
+                  <p><strong>轴心点:</strong> {{ "%.2f"|format(decision.pivots.pivot) }}</p>
+                  <p><strong>阻力位 (R1):</strong> {{ "%.2f"|format(decision.pivots.R1) }}</p>
+                  <p><strong>支撑位 (S1):</strong> {{ "%.2f"|format(decision.pivots.S1) }}</p>
+                {% else %}
+                  <p>当日无轴心点数据。</p>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          
+          <div class="col-md-6">
+            <!-- Z-Score Analysis -->
+            <div class="card mb-3">
+              <div class="card-header">
+                Z-Score分析
+              </div>
+              <div class="card-body">
+                <p><strong>Z-Score:</strong> {{ decision.zscore_comment }}</p>
+              </div>
+            </div>
+            
+            <!-- Bollinger Bands Analysis -->
+            <div class="card mb-3">
+              <div class="card-header">
+                布林带分析
+              </div>
+              <div class="card-body">
+                <p><strong>布林带:</strong> {{ decision.bollinger_comment }}</p>
+              </div>
+            </div>
+            
+            <!-- MACD Analysis -->
+            <div class="card mb-3">
+              <div class="card-header">
+                MACD分析
+              </div>
+              <div class="card-body">
+                <p><strong>MACD:</strong> {{ decision.macd_comment }}</p>
+                {% if decision.macd_hist %}
+                  <p><strong>MACD柱状图:</strong> {{ "%.4f"|format(decision.macd_hist) }}</p>
+                {% endif %}
+              </div>
+            </div>
+            
+            <!-- Volume Delta Analysis -->
+            <div class="card mb-3">
+              <div class="card-header">
+                成交量差异分析
+              </div>
+              <div class="card-body">
+                <p><strong>成交量差异:</strong> {{ decision.vol_delta_comment }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Strategy Suggestion -->
+        <div class="card mb-3">
+          <div class="card-header">
+            策略建议
+          </div>
+          <div class="card-body">
+            <p><strong>建议策略:</strong> {{ decision.strategy_suggestion }}</p>
+            <p><strong>原因:</strong> {{ decision.strategy_reason }}</p>
+          </div>
+        </div>
       </div>
     </div>
     
     <!-- Multi-Timeframe Support & Resistance -->
     <div class="card mb-3">
       <div class="card-header">
-        Multi-Timeframe Support & Resistance
+        <h5 class="mb-0">多周期支撑与阻力位</h5>
       </div>
       <div class="card-body">
         {% if decision.support_resistance %}
-          {% for tf, sr in decision.support_resistance.items() %}
-            <h5>{{ tf }}</h5>
-            {% if sr %}
-              <table class="table table-bordered">
-                <thead>
-                  <tr>
-                    <th>Indicator</th>
-                    <th>Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Pivot</td>
-                    <td>{{ sr.Pivot }}</td>
-                  </tr>
-                  <tr>
-                    <td>R1</td>
-                    <td>{{ sr.R1 }}</td>
-                  </tr>
-                  <tr>
-                    <td>S1</td>
-                    <td>{{ sr.S1 }}</td>
-                  </tr>
-                  <tr>
-                    <td>R2</td>
-                    <td>{{ sr.R2 }}</td>
-                  </tr>
-                  <tr>
-                    <td>S2</td>
-                    <td>{{ sr.S2 }}</td>
-                  </tr>
-                  <tr>
-                    <td>VWAP</td>
-                    <td>{{ sr.VWAP }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            {% else %}
-              <p>No data for this timeframe.</p>
-            {% endif %}
-          {% endfor %}
+          <div class="row">
+            {% for tf, sr in decision.support_resistance.items() %}
+              <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card h-100">
+                  <div class="card-header">
+                    <h6 class="mb-0">
+                      {% if tf == "15T" %}
+                        15分钟
+                      {% elif tf == "1H" %}
+                        1小时
+                      {% elif tf == "4H" %}
+                        4小时
+                      {% elif tf == "1D" %}
+                        日线
+                      {% else %}
+                        {{ tf }}
+                      {% endif %}
+                    </h6>
+                  </div>
+                  <div class="card-body p-0">
+                    {% if sr %}
+                      <table class="table table-sm mb-0">
+                        <tbody>
+                          <tr>
+                            <td>轴心点</td>
+                            <td>{{ "%.2f"|format(sr.Pivot) }}</td>
+                          </tr>
+                          <tr>
+                            <td>R1</td>
+                            <td>{{ "%.2f"|format(sr.R1) }}</td>
+                          </tr>
+                          <tr>
+                            <td>S1</td>
+                            <td>{{ "%.2f"|format(sr.S1) }}</td>
+                          </tr>
+                          <tr>
+                            <td>R2</td>
+                            <td>{{ "%.2f"|format(sr.R2) }}</td>
+                          </tr>
+                          <tr>
+                            <td>S2</td>
+                            <td>{{ "%.2f"|format(sr.S2) }}</td>
+                          </tr>
+                          <tr>
+                            <td>VWAP</td>
+                            <td>{{ "%.2f"|format(sr.VWAP) }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    {% else %}
+                      <p class="m-3">该周期无数据</p>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
         {% else %}
-          <p>No support/resistance data available.</p>
+          <p>无可用支撑/阻力位数据。</p>
         {% endif %}
       </div>
     </div>
@@ -171,28 +410,60 @@
     <!-- Latest Indicators -->
     <div class="card mb-3">
       <div class="card-header">
-        Latest Indicators
+        <h5 class="mb-0">最新指标数据</h5>
       </div>
       <div class="card-body">
         {% if decision.latest_indicators %}
-          <table class="table table-bordered">
-            <thead>
-              <tr>
-                <th>Indicator</th>
-                <th>Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for key, value in decision.latest_indicators.items() %}
+          <div class="table-responsive">
+            <table class="table table-striped table-bordered">
+              <thead>
                 <tr>
-                  <td>{{ key }}</td>
-                  <td>{{ value }}</td>
+                  <th>指标</th>
+                  <th>数值</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {% for key, value in decision.latest_indicators.items() %}
+                  <tr>
+                    <td>
+                      {% if key == "MA_20" %}
+                        20日均线
+                      {% elif key == "MA_50" %}
+                        50日均线
+                      {% elif key == "MACD_line" %}
+                        MACD主线
+                      {% elif key == "MACD_signal" %}
+                        MACD信号线
+                      {% elif key == "MACD_hist" %}
+                        MACD柱状图
+                      {% elif key == "RSI" %}
+                        RSI
+                      {% elif key == "Bollinger_up" %}
+                        布林上轨
+                      {% elif key == "Bollinger_mid" %}
+                        布林中轨
+                      {% elif key == "Bollinger_down" %}
+                        布林下轨
+                      {% elif key == "Zscore" %}
+                        Z-Score
+                      {% elif key == "VolumeDelta" %}
+                        成交量差异
+                      {% elif key == "ATR_optimized" %}
+                        优化ATR
+                      {% elif key == "GARCH_vol" %}
+                        GARCH波动率
+                      {% else %}
+                        {{ key }}
+                      {% endif %}
+                    </td>
+                    <td>{{ "%.4f"|format(value) }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         {% else %}
-          <p>No indicator data available.</p>
+          <p>无可用指标数据。</p>
         {% endif %}
       </div>
     </div>
