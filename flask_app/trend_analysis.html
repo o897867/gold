@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>多周期趋势分析</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        .header {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .summary {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 5px solid #ff9800;
+        }
+        .detail-card {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .bullish {
+            border-left: 5px solid #4CAF50;
+        }
+        .bearish {
+            border-left: 5px solid #F44336;
+        }
+        .neutral {
+            border-left: 5px solid #9E9E9E;
+        }
+        .chart {
+            width: 100%;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .chart img {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .data-range-info {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #e1f5fe;
+            border-radius: 8px;
+        }
+        .reason-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .reason-list li {
+            padding: 8px 0;
+            border-bottom: 1px dashed #eee;
+        }
+        .confidence-meter {
+            width: 100%;
+            height: 20px;
+            background-color: #f1f1f1;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .confidence-value {
+            height: 100%;
+            border-radius: 10px;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            font-size: 12px;
+        }
+        .high-confidence {
+            background-color: #4CAF50;
+        }
+        .medium-confidence {
+            background-color: #FFC107;
+        }
+        .low-confidence {
+            background-color: #F44336;
+        }
+        .trend-indicator {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .trend-up {
+            background-color: #4CAF50;
+        }
+        .trend-down {
+            background-color: #F44336;
+        }
+        .trend-neutral {
+            background-color: #9E9E9E;
+        }
+        .refresh-button {
+            display: block;
+            padding: 10px 20px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 20px auto;
+        }
+        .refresh-button:hover {
+            background-color: #0b7dda;
+        }
+        .indicator-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .indicator-card {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .alert-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            background-color: #ffe0b2;
+            border-left: 5px solid #ff9800;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            text-align: center;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>多周期趋势分析 <button class="refresh-button" onclick="window.location.reload()">刷新分析</button></h1>
+            <div class="data-range-info">
+                <h3>数据范围: {{ date_range }}</h3>
+                <p>当前分析基于所有可用数据，使用多周期分析方法</p>
+            </div>
+        </div>
+        
+        <div class="summary">
+            <h2>趋势分析总结 
+                <span class="trend-indicator {% if '多头' in trend_analysis.overall_trend %}trend-up{% elif '空头' in trend_analysis.overall_trend %}trend-down{% else %}trend-neutral{% endif %}">
+                    {{ trend_analysis.overall_trend }}
+                </span>
+            </h2>
+            <table>
+                <tr>
+                    <td><strong>整体趋势:</strong></td>
+                    <td>{{ trend_analysis.overall_trend }}</td>
+                </tr>
+                <tr>
+                    <td><strong>趋势一致性:</strong></td>
+                    <td>{{ trend_analysis.trend_consistency }}</td>
+                </tr>
+                <tr>
+                    <td><strong>信心分数:</strong></td>
+                    <td>
+                        <div class="confidence-meter">
+                            <div class="confidence-value {% if trend_analysis.confidence_score > 70 %}high-confidence{% elif trend_analysis.confidence_score > 40 %}medium-confidence{% else %}low-confidence{% endif %}" 
+                                 style="width: {{ trend_analysis.confidence_score }}%">
+                                {{ "%.1f"|format(trend_analysis.confidence_score) }}%
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>交易建议:</strong></td>
+                    <td>{{ trend_analysis.recommendation }}</td>
+                </tr>
+            </table>
+            
+            {% if trend_analysis.confidence_score > 70 %}
+            <div class="alert-message">
+                <strong>高信心信号！</strong> 当前趋势信号强烈，可考虑按照建议执行交易策略。
+            </div>
+            {% elif trend_analysis.confidence_score < 40 %}
+            <div class="alert-message">
+                <strong>低信心信号！</strong> 当前趋势不明确，建议谨慎操作或暂时观望。
+            </div>
+            {% endif %}
+        </div>
+        
+        <h2>多周期分析详情</h2>
+        
+        {% for tf, analysis in trend_analysis.timeframe_analysis.items() %}
+        <div class="detail-card {% if analysis.trend == '多头' %}bullish{% elif analysis.trend == '空头' %}bearish{% else %}neutral{% endif %}">
+            <h3>{{ tf }} 时间框架分析 
+                <span class="trend-indicator {% if analysis.trend == '多头' %}trend-up{% elif analysis.trend == '空头' %}trend-down{% else %}trend-neutral{% endif %}">
+                    {{ analysis.trend }}
+                </span>
+            </h3>
+            <table>
+                <tr>
+                    <td><strong>趋势方向:</strong></td>
+                    <td>{{ analysis.trend }}</td>
+                </tr>
+                <tr>
+                    <td><strong>多头分数:</strong></td>
+                    <td>{{ analysis.bull_points }}</td>
+                </tr>
+                <tr>
+                    <td><strong>空头分数:</strong></td>
+                    <td>{{ analysis.bear_points }}</td>
+                </tr>
+                <tr>
+                    <td><strong>信心度:</strong></td>
+                    <td>
+                        <div class="confidence-meter">
+                            <div class="confidence-value {% if analysis.confidence > 70 %}high-confidence{% elif analysis.confidence > 40 %}medium-confidence{% else %}low-confidence{% endif %}" 
+                                 style="width: {{ analysis.confidence }}%">
+                                {{ "%.1f"|format(analysis.confidence) }}%
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+            
+            <h4>趋势判断理由:</h4>
+            <ul class="reason-list">
+                {% for reason in analysis.reasons %}
+                <li>{{ reason }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+        
+        <div class="chart">
+            <h2>趋势可视化</h2>
+            <img src="data:image/png;base64,{{ visualization }}" alt="趋势分析图表">
+        </div>
+        
+        <div class="footer">
+            <p>趋势分析系统 © {% now year %} | 基于多周期分析方法 | 刷新时间: {% now format="%Y-%m-%d %H:%M:%S" %}</p>
+        </div>
+    </div>
+    
+    <script>
+        // 自动刷新页面（可选，每5分钟刷新一次）
+        // setTimeout(function() { window.location.reload(); }, 300000);
+        
+        // 如果需要自动刷新，取消上面注释
+    </script>
+</body>
+</html>

@@ -1,0 +1,519 @@
+<!-- 保存为templates/risk_management.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>风险管理与止损计算</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        .header {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .risk-management {
+            margin: 20px 0;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab-button {
+            padding: 10px 15px;
+            background-color: #f8f8f8;
+            border: none;
+            border-radius: 4px 4px 0 0;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .tab-button.active {
+            background-color: #2196F3;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .description {
+            color: #666;
+            margin-bottom: 15px;
+            font-style: italic;
+        }
+        .calculate-button {
+            padding: 10px 20px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px 0 0;
+            font-weight: bold;
+        }
+        .calculate-button:hover {
+            background-color: #0b7dda;
+        }
+        .detail-card {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        input, select {
+            padding: 8px;
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        #risk-results {
+            margin-top: 20px;
+            border-left: 5px solid #2196F3;
+        }
+        .risk-tips {
+            margin-top: 20px;
+            background-color: #f9f9f9;
+            border-left: 5px solid #FFC107;
+        }
+        .tip-icon {
+            font-size: 18px;
+            margin-left: 8px;
+        }
+        .risk-tips ul {
+            padding-left: 20px;
+        }
+        .risk-tips li {
+            margin-bottom: 8px;
+        }
+        .info-tooltip {
+            font-size: 14px;
+            color: #2196F3;
+            margin-left: 8px;
+            cursor: help;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .navigation {
+            margin-bottom: 20px;
+        }
+        .navigation a {
+            display: inline-block;
+            padding: 8px 16px;
+            margin-right: 10px;
+            background-color: #2196F3;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .navigation a:hover {
+            background-color: #0b7dda;
+        }
+        .alert-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            background-color: #ffe0b2;
+            border-left: 5px solid #ff9800;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>风险管理与止损计算</h1>
+            <div class="navigation">
+                <a href="/">返回首页</a>
+                <a href="/trend_analysis">趋势分析</a>
+                <a href="/decision">交易决策</a>
+            </div>
+        </div>
+        
+        <div class="risk-management">
+            <h2>风险管理与止损计算 <span class="info-tooltip" title="基于账户风险计算安全的仓位和止损">ⓘ</span></h2>
+            
+            <div class="detail-card">
+                <div class="tabs">
+                    <button class="tab-button active" data-tab="fixed-risk">固定比例止损</button>
+                    <button class="tab-button" data-tab="max-risk">最大风险止损</button>
+                    <button class="tab-button" data-tab="atr-risk">ATR动态止损</button>
+                </div>
+                
+                <div class="tab-content active" id="fixed-risk">
+                    <h3>固定比例止损计算</h3>
+                    <p class="description">根据固定的仓位比例计算止损价格，确保风险不超过账户的指定百分比。</p>
+                    
+                    <form id="fixed-risk-form">
+                        <table>
+                            <tr>
+                                <td><label for="f-entry-price">入场价格:</label></td>
+                                <td><input type="number" id="f-entry-price" step="0.01" required value="{{ latest_price }}"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="f-direction">交易方向:</label></td>
+                                <td>
+                                    <select id="f-direction">
+                                        <option value="long" {% if '多头' in trend_analysis.overall_trend %}selected{% endif %}>多头</option>
+                                        <option value="short" {% if '空头' in trend_analysis.overall_trend %}selected{% endif %}>空头</option>
+                                    </select>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><label for="f-account-size">账户总资金:</label></td>
+                                <td><input type="number" id="f-account-size" step="100" required value="10000"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="f-risk-percentage">最大风险比例(%):</label></td>
+                                <td><input type="number" id="f-risk-percentage" step="0.1" min="0.1" max="10" required value="1"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="f-position-percentage">固定仓位比例(%):</label></td>
+                                <td><input type="number" id="f-position-percentage" step="0.1" min="1" max="100" required value="10"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="f-leverage">杠杆倍数:</label></td>
+                                <td><input type="number" id="f-leverage" value="500" readonly></td>
+                            </tr>
+                            <tr>
+                                <td colspan="2">
+                                    <button type="button" id="calculate-fixed" class="calculate-button">计算固定比例止损</button>
+                                </td>
+                            </tr>
+                        </table>
+                    </form>
+                </div>
+                
+                <div class="tab-content" id="max-risk">
+                    <h3>最大风险止损计算</h3>
+                    <p class="description">通过固定的止损距离(0.5%)来计算安全的仓位大小，控制风险不超过账户的指定百分比。</p>
+                    
+                    <form id="max-risk-form">
+                        <table>
+                            <tr>
+                                <td><label for="m-entry-price">入场价格:</label></td>
+                                <td><input type="number" id="m-entry-price" step="0.01" required value="{{ latest_price }}"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="m-direction">交易方向:</label></td>
+                                <td>
+                                    <select id="m-direction">
+                                        <option value="long" {% if '多头' in trend_analysis.overall_trend %}selected{% endif %}>多头</option>
+                                        <option value="short" {% if '空头' in trend_analysis.overall_trend %}selected{% endif %}>空头</option>
+                                    </select>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><label for="m-account-size">账户总资金:</label></td>
+                                <td><input type="number" id="m-account-size" step="100" required value="10000"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="m-risk-percentage">最大风险比例(%):</label></td>
+                                <td><input type="number" id="m-risk-percentage" step="0.1" min="0.1" max="10" required value="1"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="m-stop-percentage">止损距离(%):</label></td>
+                                <td><input type="number" id="m-stop-percentage" step="0.1" min="0.1" max="5" required value="0.5"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="m-leverage">杠杆倍数:</label></td>
+                                <td><input type="number" id="m-leverage" value="500" readonly></td>
+                            </tr>
+                            <tr>
+                                <td colspan="2">
+                                    <button type="button" id="calculate-max-risk" class="calculate-button">计算最大风险止损</button>
+                                </td>
+                            </tr>
+                        </table>
+                    </form>
+                </div>
+                
+                <div class="tab-content" id="atr-risk">
+                    <h3>ATR动态止损计算</h3>
+                    <p class="description">基于平均真实波幅(ATR)计算动态止损距离，适应市场波动性调整仓位大小。</p>
+                    
+                    <form id="atr-risk-form">
+                        <table>
+                            <tr>
+                                <td><label for="a-entry-price">入场价格:</label></td>
+                                <td><input type="number" id="a-entry-price" step="0.01" required value="{{ latest_price }}"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="a-direction">交易方向:</label></td>
+                                <td>
+                                    <select id="a-direction">
+                                        <option value="long" {% if '多头' in trend_analysis.overall_trend %}selected{% endif %}>多头</option>
+                                        <option value="short" {% if '空头' in trend_analysis.overall_trend %}selected{% endif %}>空头</option>
+                                    </select>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><label for="a-account-size">账户总资金:</label></td>
+                                <td><input type="number" id="a-account-size" step="100" required value="10000"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="a-risk-percentage">最大风险比例(%):</label></td>
+                                <td><input type="number" id="a-risk-percentage" step="0.1" min="0.1" max="10" required value="1"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="a-atr-multiplier">ATR乘数:</label></td>
+                                <td><input type="number" id="a-atr-multiplier" step="0.1" min="0.5" max="5" required value="1.5"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="a-timeframe">时间框架:</label></td>
+                                <td>
+                                    <select id="a-timeframe">
+                                        <option value="15T">15分钟</option>
+                                        <option value="1H" selected>1小时</option>
+                                        <option value="4H">4小时</option>
+                                    </select>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><label for="a-leverage">杠杆倍数:</label></td>
+                                <td><input type="number" id="a-leverage" value="500" readonly></td>
+                            </tr>
+                            <tr>
+                                <td colspan="2">
+                                    <button type="button" id="calculate-atr" class="calculate-button">计算ATR动态止损</button>
+                                </td>
+                            </tr>
+                        </table>
+                    </form>
+                </div>
+            </div>
+            
+            <div id="risk-results" class="detail-card" style="display: none;">
+                <!-- 计算结果将在此显示 -->
+            </div>
+        
+            <div class="risk-tips detail-card">
+                <h3>风险管理小贴士 <span class="tip-icon">💡</span></h3>
+                <ul>
+                    <li><strong>止损设置:</strong> 永远设置止损，无例外。高杠杆交易中，不设止损可能导致账户爆仓。</li>
+                    <li><strong>风险控制:</strong> 单笔交易风险不应超过账户总资金的1-2%。</li>
+                    <li><strong>杠杆控制:</strong> 500倍杠杆风险极高，价格波动0.2%即可导致亏损全部保证金。</li>
+                    <li><strong>总风险控制:</strong> 同时持有的所有仓位总风险不应超过账户的5-10%。</li>
+                    <li><strong>资金管理:</strong> 使用最大风险止损和固定比例止损相结合的方式，可以更好地保护账户资金。</li>
+                </ul>
+            </div>
+        </div>
+        
+
+    </div>
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 标签页切换功能
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        tabButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                // 移除所有active类
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                tabContents.forEach(content => content.classList.remove('active'));
+                
+                // 添加active类到当前标签
+                this.classList.add('active');
+                document.getElementById(this.dataset.tab).classList.add('active');
+            });
+        });
+        
+        // 固定比例止损计算
+        document.getElementById('calculate-fixed').addEventListener('click', function() {
+            calculateStopLoss('fixed');
+        });
+        
+        // 最大风险止损计算
+        document.getElementById('calculate-max-risk').addEventListener('click', function() {
+            calculateStopLoss('max-risk');
+        });
+        
+        // ATR动态止损计算
+        document.getElementById('calculate-atr').addEventListener('click', function() {
+            calculateStopLoss('atr');
+        });
+        
+        function calculateStopLoss(type) {
+            let endpoint, data;
+            
+            if (type === 'fixed') {
+                endpoint = '/api/calculate_stop_loss';
+                data = {
+                    entry_price: parseFloat(document.getElementById('f-entry-price').value),
+                    direction: document.getElementById('f-direction').value,
+                    account_size: parseFloat(document.getElementById('f-account-size').value),
+                    risk_percentage: parseFloat(document.getElementById('f-risk-percentage').value),
+                    leverage: parseFloat(document.getElementById('f-leverage').value),
+                    position_percentage: parseFloat(document.getElementById('f-position-percentage').value)
+                };
+            } else if (type === 'max-risk') {
+                endpoint = '/api/calculate_stop_loss';
+                // 在最大风险模式下，我们不传递position_percentage
+                const stopPercentage = parseFloat(document.getElementById('m-stop-percentage').value);
+                data = {
+                    entry_price: parseFloat(document.getElementById('m-entry-price').value),
+                    direction: document.getElementById('m-direction').value,
+                    account_size: parseFloat(document.getElementById('m-account-size').value),
+                    risk_percentage: parseFloat(document.getElementById('m-risk-percentage').value),
+                    leverage: parseFloat(document.getElementById('m-leverage').value),
+                    // 我们在后端使用这个固定止损距离
+                    stop_percentage: stopPercentage
+                };
+            } else if (type === 'atr') {
+                endpoint = '/api/calculate_dynamic_stop_loss';
+                data = {
+                    entry_price: parseFloat(document.getElementById('a-entry-price').value),
+                    direction: document.getElementById('a-direction').value,
+                    account_size: parseFloat(document.getElementById('a-account-size').value),
+                    risk_percentage: parseFloat(document.getElementById('a-risk-percentage').value),
+                    leverage: parseFloat(document.getElementById('a-leverage').value),
+                    atr_multiplier: parseFloat(document.getElementById('a-atr-multiplier').value),
+                    timeframe: document.getElementById('a-timeframe').value
+                };
+            }
+            
+            // 验证输入
+            for (const key in data) {
+                if (key !== 'direction' && key !== 'timeframe' && isNaN(data[key])) {
+                    alert('请输入有效的数字');
+                    return;
+                }
+            }
+            
+            // 发送API请求
+            fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+                credentials: 'same-origin'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('网络响应不正常');
+                }
+                return response.json();
+            })
+            .then(result => {
+                if (result.error) {
+                    alert('计算错误: ' + result.error);
+                    return;
+                }
+                
+                // 显示结果
+                showResults(result, type);
+            })
+            .catch(error => {
+                console.error('错误:', error);
+                alert('计算过程中发生错误: ' + error.message);
+            });
+        }
+        
+        function showResults(data, calcType) {
+            const resultsDiv = document.getElementById('risk-results');
+            
+            // 根据计算类型设置标题
+            let title;
+            if (calcType === 'fixed') {
+                title = '固定比例止损';
+            } else if (calcType === 'max-risk') {
+                title = '最大风险止损';
+            } else {
+                title = 'ATR动态止损';
+            }
+            
+            const direction = data.direction.toLowerCase() === 'long' ? '多头' : '空头';
+            
+            // 计算止损距离百分比
+            const stopDistance = ((Math.abs(data.entry_price - data.stop_loss_price) / data.entry_price) * 100).toFixed(2);
+            
+            // 构建结果HTML
+            let html = `
+                <h3>风险管理计算结果 - ${title} (${direction}交易)</h3>
+                <table>
+                    <tr>
+                        <td><strong>入场价格:</strong></td>
+                        <td>${data.entry_price.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>止损价格:</strong></td>
+                        <td>${data.stop_loss_price.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>止损距离:</strong></td>
+                        <td>${stopDistance}%</td>
+                    </tr>
+                    <tr>
+                        <td><strong>仓位金额:</strong></td>
+                        <td>${data.position_size.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>合约数量:</strong></td>
+                        <td>${data.contract_size.toFixed(4)}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>最大风险金额:</strong></td>
+                        <td>${data.max_risk_amount.toFixed(2)} (${data.max_risk_percentage}%)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>潜在损失:</strong></td>
+                        <td>${data.potential_loss.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>杠杆倍数:</strong></td>
+                        <td>${data.leverage}x</td>
+                    </tr>`;
+                    
+            // 添加ATR相关信息（如果存在）
+            if (data.atr_value) {
+                html += `
+                    <tr>
+                        <td><strong>ATR值:</strong></td>
+                        <td>${data.atr_value.toFixed(4)}</td>
+                    </tr>`;
+            }
+            
+            html += `
+                </table>
+                
+                <div class="alert-message">
+                    <strong>风险警告:</strong> 高杠杆交易风险极高。确保您了解潜在风险，不要使用超过能承受损失的资金。
+                </div>`;
+            
+            resultsDiv.innerHTML = html;
+            resultsDiv.style.display = 'block';
+            
+            // 滚动到结果区域
+            resultsDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+    });
+    </script>
+</body>
+</html>

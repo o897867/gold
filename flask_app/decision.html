@@ -72,7 +72,6 @@
               {% if decision.enhanced_decision.risk_reward_ratio %}
                 <p><strong>风险回报比:</strong> 1:{{ "%.2f"|format(decision.enhanced_decision.risk_reward_ratio) }}</p>
               {% endif %}
-              <!-- 在交易建议卡片中添加 -->
               {% if decision.enhanced_decision.leverage_risk %}
               <p><strong>杠杆风险评估:</strong> {{ decision.enhanced_decision.leverage_risk }}</p>
               {% endif %}
@@ -99,7 +98,6 @@
                 <div class="card-header">市场环境</div>
                 <div class="card-body">
                   <p><strong>市场模式:</strong> {{ decision.market_context.market_regime }}</p>
-                  <p><strong>价格变化百分比:</strong> {{ "%.2f"|format(decision.market_context.price_change_pct) }}%</p>
                   <p><strong>波动性环境:</strong> {{ decision.market_context.volatility_regime }}</p>
                 </div>
               </div>
@@ -163,7 +161,7 @@
     {% if decision.enhanced_sr %}
     <div class="card mb-3">
       <div class="card-header">
-        <h5 class="mb-0">增强型支撑与阻力位</h5>
+        <h5 class="mb-0">支撑与阻力位分析</h5>
       </div>
       <div class="card-body">
         <div class="row">
@@ -231,111 +229,6 @@
       </div>
     </div>
     {% endif %}
-    
-    <!-- Original Analysis -->
-    <div class="card mb-3">
-      <div class="card-header">
-        <h5 class="mb-0">原始分析</h5>
-      </div>
-      <div class="card-body">
-        <div class="row">
-          <div class="col-md-6">
-            <!-- Volatility and Market Condition -->
-            <div class="card mb-3">
-              <div class="card-header">
-                波动性和市场状况
-              </div>
-              <div class="card-body">
-                <p><strong>波动性分析:</strong> {{ decision.volatility_comment }}</p>
-                <p><strong>市场状况:</strong> {{ decision.market_condition }}</p>
-              </div>
-            </div>
-            
-            <!-- GARCH Volatility Analysis -->
-            <div class="card mb-3">
-              <div class="card-header">
-                GARCH波动性分析
-              </div>
-              <div class="card-body">
-                <p><strong>GARCH波动率:</strong> {{ decision.garch_vol_comment }}</p>
-              </div>
-            </div>
-            
-            <!-- Daily Pivot Points -->
-            <div class="card mb-3">
-              <div class="card-header">
-                日内轴心点
-              </div>
-              <div class="card-body">
-                {% if decision.pivots %}
-                  <p><strong>轴心点:</strong> {{ "%.2f"|format(decision.pivots.pivot) }}</p>
-                  <p><strong>阻力位 (R1):</strong> {{ "%.2f"|format(decision.pivots.R1) }}</p>
-                  <p><strong>支撑位 (S1):</strong> {{ "%.2f"|format(decision.pivots.S1) }}</p>
-                {% else %}
-                  <p>当日无轴心点数据。</p>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-          
-          <div class="col-md-6">
-            <!-- Z-Score Analysis -->
-            <div class="card mb-3">
-              <div class="card-header">
-                Z-Score分析
-              </div>
-              <div class="card-body">
-                <p><strong>Z-Score:</strong> {{ decision.zscore_comment }}</p>
-              </div>
-            </div>
-            
-            <!-- Bollinger Bands Analysis -->
-            <div class="card mb-3">
-              <div class="card-header">
-                布林带分析
-              </div>
-              <div class="card-body">
-                <p><strong>布林带:</strong> {{ decision.bollinger_comment }}</p>
-              </div>
-            </div>
-            
-            <!-- MACD Analysis -->
-            <div class="card mb-3">
-              <div class="card-header">
-                MACD分析
-              </div>
-              <div class="card-body">
-                <p><strong>MACD:</strong> {{ decision.macd_comment }}</p>
-                {% if decision.macd_hist %}
-                  <p><strong>MACD柱状图:</strong> {{ "%.4f"|format(decision.macd_hist) }}</p>
-                {% endif %}
-              </div>
-            </div>
-            
-            <!-- Volume Delta Analysis -->
-            <div class="card mb-3">
-              <div class="card-header">
-                成交量差异分析
-              </div>
-              <div class="card-body">
-                <p><strong>成交量差异:</strong> {{ decision.vol_delta_comment }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Strategy Suggestion -->
-        <div class="card mb-3">
-          <div class="card-header">
-            策略建议
-          </div>
-          <div class="card-body">
-            <p><strong>建议策略:</strong> {{ decision.strategy_suggestion }}</p>
-            <p><strong>原因:</strong> {{ decision.strategy_reason }}</p>
-          </div>
-        </div>
-      </div>
-    </div>
     
     <!-- Multi-Timeframe Support & Resistance -->
     <div class="card mb-3">

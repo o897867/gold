@@ -20,8 +20,9 @@ import indicator
 import decision
 from flask import request, jsonify
 import datetime
-from decision import enhanced_strategy_decision, strategy_decision
+from decision import enhanced_strategy_decision,backtest_strategy
 import pandas as pd
+from trend import generate_trend_report, resample_to_multiple_timeframes, calculate_stop_loss, calculate_dynamic_position_sizing
 
 code = 'XAUUSD'
 app = Flask(__name__)
@@ -422,9 +423,222 @@ def decision():
     
     # Call the enhanced decision function without order book
     decision_result = enhanced_strategy_decision(df_day)
-    
+    print(f"DEBUG: 决策结果中止损位: {decision_result.get('enhanced_decision', {}).get('stop_loss')}")
+    print(f"DEBUG: 决策结果中仓位: {decision_result.get('enhanced_decision', {}).get('suggested_position')}")
     # Render the decision page using the template.
     return render_template("decision.html", decision=decision_result, date=date_str)
+@app.route('/backtest')
+@requires_auth
+def backtest_page():
+    """回测页面路由"""
+    return render_template('backtest.html')
+
+@app.route('/api/backtest', methods=['POST'])
+@requires_auth
+def run_backtest_api():
+    """运行回测的API端点"""
+    # 获取请求参数
+    data = request.json
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    initial_capital = float(data.get('initial_capital', 10000))
+    leverage = float(data.get('leverage', 100))
+    risk_percent = float(data.get('risk_percent', 2))
+    
+    # 验证输入
+    if not start_date or not end_date:
+        return jsonify({"error": "需要提供开始和结束日期"}), 400
+    
+    try:
+        # 获取历史数据
+        with data_manager.lock:
+            df = data_manager.df.copy()
+        
+        # 先检查是否有数据
+        if df.empty:
+            return jsonify({"error": "没有可用的历史数据"}), 400
+            
+        # 检查日期范围是否有效
+        df_start = df.index.min().strftime('%Y-%m-%d')
+        df_end = df.index.max().strftime('%Y-%m-%d')
+        
+        if pd.to_datetime(start_date) < pd.to_datetime(df_start):
+            start_date = df_start
+            
+        if pd.to_datetime(end_date) > pd.to_datetime(df_end):
+            end_date = df_end
+        
+        # 输出调试信息
+        print(f"回测日期范围: {start_date} 至 {end_date}")
+        print(f"数据范围: {df_start} 至 {df_end}")
+        print(f"数据点数: {len(df)}")
+        
+        # 运行回测
+        results = backtest_strategy(df, start_date, end_date, initial_capital, leverage, risk_percent)
+        
+        return jsonify(results)
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"回测执行出错: {str(e)}"}), 500
+
+@app.route('/api/available-dates')
+@requires_auth
+def get_available_dates():
+    """获取可用于回测的日期范围"""
+    try:
+        with data_manager.lock:
+            # 确保数据不为空
+            if data_manager.df.empty:
+                return jsonify({"error": "没有可用的历史数据", "dates": []}), 200
+                
+            dates = data_manager.df.index.strftime('%Y-%m-%d').unique().tolist()
+        return jsonify({"dates": dates})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e), "dates": []}), 200
+@app.route('/trend_analysis')
+def trend_analysis_page():
+        """趋势分析页面 - 分析整个数据集"""
+        try:
+            # 获取历史数据
+            with data_manager.lock:
+                df = data_manager.df.copy()
+            if df.empty:
+                return "<h3>没有可用的数据</h3>"
+            
+            # 如果数据量太大，可以选择最近的一部分数据进行分析
+            
+            print(f"分析数据范围: {df.index.min()} 至 {df.index.max()}, 共 {len(df)} 个数据点")
+            
+            # 生成趋势报告
+            report = generate_trend_report(df)
+            
+            # 渲染模板
+            date_range = f"{df.index.min().strftime('%Y-%m-%d')} 至 {df.index.max().strftime('%Y-%m-%d')}"
+            return render_template(
+                "trend_analysis.html", 
+                date_range=date_range,
+                trend_analysis=report["trend_analysis"],
+                visualization=report["visualization"]
+            )
+            
+        except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
+            return f"<h3>趋势分析过程中出错: {e}</h3><pre>{error_traceback}</pre>"
+@app.route('/risk_management')
+@requires_auth
+def risk_management_page():
+    """风险管理页面 - 提供止损计算工具"""
+    try:
+        # Add current datetime to template context
+        from datetime import datetime
+        now = datetime.now()
+        
+        # 获取最新价格作为默认入场价
+        with data_manager.lock:
+            latest_data = data_manager.df.iloc[-1]
+            latest_price = latest_data['Close']
+        
+        # 获取趋势分析结果以设置默认交易方向
+        with data_manager.lock:
+            df = data_manager.df.copy()
+        
+        # 生成趋势报告
+        report = generate_trend_report(df)
+        trend_analysis = report["trend_analysis"]
+        
+        # 渲染风险管理模板
+        return render_template(
+            "risk_management.html",
+            latest_price=latest_price,
+            trend_analysis=trend_analysis,
+            now=now  # Pass the current datetime to the template
+        )
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        return f"<h3>加载风险管理页面时出错: {e}</h3><pre>{error_traceback}</pre>"
+
+@app.route('/api/calculate_stop_loss', methods=['POST'])
+@requires_auth
+def api_calculate_stop_loss():
+    """计算止损的API端点"""
+    try:
+        data = request.json
+        
+        # 获取参数
+        entry_price = float(data.get('entry_price'))
+        direction = data.get('direction', 'long')
+        risk_percentage = float(data.get('risk_percentage', 1.0))
+        account_size = float(data.get('account_size', 10000))
+        leverage = float(data.get('leverage', 500))
+        position_percentage = data.get('position_percentage')
+        
+        if position_percentage is not None:
+            position_percentage = float(position_percentage)
+        
+        # 使用之前在trend.py中定义的函数计算止损
+        result = calculate_stop_loss(
+            entry_price=entry_price,
+            direction=direction,
+            risk_percentage=risk_percentage,
+            account_size=account_size,
+            leverage=leverage,
+            position_percentage=position_percentage
+        )
+        
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"计算止损时出错: {str(e)}"}), 500
+
+@app.route('/api/calculate_dynamic_stop_loss', methods=['POST'])
+@requires_auth
+def api_calculate_dynamic_stop_loss():
+    """基于ATR计算动态止损的API端点"""
+    try:
+        data = request.json
+        
+        # 获取参数
+        entry_price = float(data.get('entry_price'))
+        direction = data.get('direction', 'long')
+        risk_percentage = float(data.get('risk_percentage', 1.0))
+        account_size = float(data.get('account_size', 10000))
+        leverage = float(data.get('leverage', 500))
+        atr_multiplier = float(data.get('atr_multiplier', 1.5))
+        timeframe = data.get('timeframe', '1H')
+        
+        # 获取相应时间框架的数据
+        with data_manager.lock:
+            df_dict = resample_to_multiple_timeframes(data_manager.df.copy())
+            df = df_dict.get(timeframe)
+            
+            if df is None or df.empty:
+                return jsonify({"error": f"无法获取{timeframe}时间框架的数据"}), 400
+        
+        # 使用之前在trend.py中定义的函数计算动态止损
+        result = calculate_dynamic_position_sizing(
+            df=df,
+            entry_price=entry_price,
+            direction=direction,
+            risk_percentage=risk_percentage,
+            account_size=account_size,
+            atr_periods=14,
+            atr_multiplier=atr_multiplier,
+            leverage=leverage
+        )
+        
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"计算动态止损时出错: {str(e)}"}), 500
+
 if __name__ == '__main__':
     # def run_ws():
     #     feed.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
